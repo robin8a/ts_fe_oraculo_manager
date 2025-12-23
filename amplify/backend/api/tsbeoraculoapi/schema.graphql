@@ -1,0 +1,511 @@
+# This "input" configures a global authorization rule to enable public access to
+# all models in this schema. Learn more about authorization rules here: https://docs.amplify.aws/cli/graphql/authorization-rules
+input AMPLIFY { globalAuthRule: AuthRule = { allow: public } } # FOR TESTING ONLY!
+
+type ModelAI @model {
+  id: ID!
+  name: String!
+  description: String!
+  document_link: String!
+  api_link: String!
+  version: String!
+  is_approved: Boolean!
+  tokens_cost: Int!
+  cost_tokens: Int!
+  calculations: [Calculation] @hasMany
+}
+
+type Calculation @model {
+  id: ID!
+  polygon: AWSJSON!
+  start_date: AWSTimestamp!
+  end_date: AWSTimestamp!
+  satellite_TIF: AWSURL!
+  result_TIF: AWSURL!
+  result_PNG: AWSURL!
+  is_to_block_chain: Boolean!
+  modelAI: ModelAI @belongsTo
+  user: User @belongsTo
+}
+
+type User @model {
+  id: ID!
+  user_model_packages: [UserModelPackage] @hasMany
+  calculations: [Calculation] @hasMany
+}
+
+type ModelPackage @model {
+  id: ID!
+  tokenAmount: Int!
+  user_model_packages: [UserModelPackage] @hasMany
+}
+
+type UserModelPackage @model {
+  id: ID!
+  modelPackage: ModelPackage @belongsTo
+  user: User @belongsTo
+}
+
+# API Oraculo actual
+
+# AWS GraphQL Schema for Oracle MySQL Database
+# Generated from DB ORACUL_MySQL_Create.sql
+
+# Enums
+enum SubjectType {
+  USER
+  GROUP
+  API_CLIENT
+}
+
+enum EstadoConsulta {
+  REGISTRADO
+  PROCESANDO
+  COMPLETADO
+  CERTIFICADO_BLOCKCHAIN
+  ERROR
+}
+
+enum EstadoTipoActor {
+  USER
+  SYSTEM
+  API_CLIENT
+}
+
+enum TipoDispositivo {
+  SENSOR
+  ACTUADOR
+  GATEWAY
+  CAMERA
+  OTHER
+}
+
+enum EstadoDispositivo {
+  ACTIVO
+  INACTIVO
+  MANTENIMIENTO
+  ERROR
+}
+
+enum TipoFormula {
+  ALOMETRICA
+  TELEDETECCION
+  DEEP_LEARNING
+  ESTADISTICA
+}
+
+enum SourceType {
+  INTERNAL
+  EXTERNAL
+}
+
+# Core Types
+
+type Proyecto @model @auth(rules: [
+  { allow: public, operations: [read, create, update, delete] }
+]) {
+  id: ID!
+  proyectoNombre: String!
+  proyectoDescripcion: String
+  proyectoIdExterno: String
+  proyectoActivo: Boolean! @default(value: "true")
+  proyectoFechaCreacion: AWSDateTime
+  proyectoFechaActualizacion: AWSDateTime
+  
+  # Relationships
+  consultasAnalisis: [ConsultaAnalisis] @hasMany(indexName: "byProyecto", fields: ["id"])
+  gruposIot: [RelGrupoIotProyecto] @hasMany(indexName: "byProyecto", fields: ["id"])
+}
+
+type ConsultaAnalisis @model @auth(rules: [
+  { allow: public, operations: [read, create, update, delete] }
+]) {
+  id: ID!
+  proyectoId: ID @index(name: "byProyecto")
+  consultaNombre: String!
+  consultaUbicacion: String!
+  consultaParametros: AWSJSON
+  consultaExternaPoligonos: AWSJSON
+  consultaIdExterna: String
+  respuestaResultado: AWSJSON
+  respuestaIdentificadorExterno: String
+  modeloId: String
+  modeloName: String
+  modeloDescription: String
+  modeloVersion: String
+  modeloDocumentLink: String
+  modeloApiLink: String
+  blockchainHashTransaccion: String
+  fechaCreacion: AWSDateTime
+  source: SourceType! @default(value: "INTERNAL")
+  
+  # Relationships
+  proyecto: Proyecto @belongsTo(fields: ["proyectoId"])
+  estados: [ConsultaEstado] @hasMany(indexName: "byConsulta", fields: ["id"])
+  cuotasUso: [AnalisisCuotasUsoDiario] @hasMany(indexName: "byConsulta", fields: ["id"])
+}
+
+type ConsultaEstado @model @auth(rules: [
+  { allow: public, operations: [read, create, update, delete] }
+]) {
+  id: ID!
+  consultaId: ID! @index(name: "byConsulta")
+  estado: EstadoConsulta!
+  estadoFecha: AWSDateTime!
+  estadoUsername: String
+  estadoObservaciones: String
+  estadoTipoActor: EstadoTipoActor! @default(value: "SYSTEM")
+  
+  # Relationships
+  consulta: ConsultaAnalisis @belongsTo(fields: ["consultaId"])
+}
+
+type AnalisisCuota @model @auth(rules: [
+  { allow: public, operations: [read, create, update, delete] }
+]) {
+  id: ID!
+  nombreGrupo: String! @index(name: "byNombreGrupo")
+  limiteDiario: Int! @default(value: "0")
+  activo: Boolean! @default(value: "true")
+  creadoEn: AWSDateTime
+  actualizadoEn: AWSDateTime
+  
+  # Relationships
+  usosDiarios: [AnalisisCuotasUsoDiario] @hasMany(indexName: "byGrupo", fields: ["id"])
+}
+
+type AnalisisCuotasUsoDiario @model @auth(rules: [
+  { allow: public, operations: [read, create, update, delete] }
+]) {
+  id: ID!
+  usuarioNombre: String! @index(name: "byUsuario")
+  grupoId: ID! @index(name: "byGrupo")
+  fechaUso: AWSDateTime! @index(name: "byFechaUso")
+  consultaId: ID! @index(name: "byConsulta")
+  creadoEn: AWSDateTime
+  
+  # Relationships
+  consulta: ConsultaAnalisis @belongsTo(fields: ["consultaId"])
+  grupo: AnalisisCuota @belongsTo(fields: ["grupoId"])
+}
+
+# IoT Types
+
+type DispositivoIot @model @auth(rules: [
+  { allow: public, operations: [read, create, update, delete] }
+]) {
+  id: ID!
+  deviceId: String! @index(name: "byDeviceId")
+  nombre: String!
+  departamento: String!
+  zona: String!
+  tipoDispositivo: TipoDispositivo!
+  variablesPublicadas: AWSJSON!
+  localizacion: AWSJSON
+  estado: EstadoDispositivo! @default(value: "ACTIVO")
+  observaciones: String
+  createdAt: AWSDateTime
+  updatedAt: AWSDateTime
+  
+  # Relationships
+  grupos: [RelDispositivoGrupoIot] @hasMany(indexName: "byDispositivo", fields: ["id"])
+  mediciones: [MedicionIot] @hasMany(indexName: "byDispositivo", fields: ["id"])
+}
+
+type GrupoIot @model @auth(rules: [
+  { allow: public, operations: [read, create, update, delete] }
+]) {
+  id: ID!
+  nombre: String! @index(name: "byNombre")
+  descripcion: String
+  estado: EstadoDispositivo! @default(value: "ACTIVO")
+  usuarioCreador: String
+  observaciones: String
+  createdAt: AWSDateTime
+  updatedAt: AWSDateTime
+  
+  # Relationships
+  dispositivos: [RelDispositivoGrupoIot] @hasMany(indexName: "byGrupo", fields: ["id"])
+  proyectos: [RelGrupoIotProyecto] @hasMany(indexName: "byGrupo", fields: ["id"])
+}
+
+type RelDispositivoGrupoIot @model @auth(rules: [
+  { allow: public, operations: [read, create, update, delete] }
+]) {
+  id: ID!
+  dispositivoId: ID! @index(name: "byDispositivo")
+  grupoId: ID! @index(name: "byGrupo")
+  fechaAsignacion: AWSDateTime
+  usuarioId: String
+  notas: String
+  
+  # Relationships
+  dispositivo: DispositivoIot @belongsTo(fields: ["dispositivoId"])
+  grupo: GrupoIot @belongsTo(fields: ["grupoId"])
+}
+
+type RelGrupoIotProyecto @model @auth(rules: [
+  { allow: public, operations: [read, create, update, delete] }
+]) {
+  id: ID!
+  grupoId: ID! @index(name: "byGrupo")
+  proyectoId: ID! @index(name: "byProyecto")
+  fechaAsignacion: AWSDateTime
+  usuarioId: String
+  notas: String
+  
+  # Relationships
+  grupo: GrupoIot @belongsTo(fields: ["grupoId"])
+  proyecto: Proyecto @belongsTo(fields: ["proyectoId"])
+}
+
+type MedicionIot @model @auth(rules: [
+  { allow: public, operations: [read, create, update, delete] }
+]) {
+  id: ID!
+  dispositivoId: ID! @index(name: "byDispositivo")
+  deviceId: String! @index(name: "byDeviceId")
+  departamento: String!
+  zona: String!
+  variable: String!
+  valor: Float!
+  timestamp: AWSDateTime! @index(name: "byTimestamp")
+  
+  # Relationships
+  dispositivo: DispositivoIot @belongsTo(fields: ["dispositivoId"])
+}
+
+# Legacy System Types
+
+type ProyectoLegacy @model @auth(rules: [
+  { allow: public, operations: [read, create, update, delete] }
+]) {
+  id: ID!
+  projectId: String! @index(name: "byProjectId")
+  descripcion: String
+  
+  # Relationships
+  consultasWeb: [ConsultaWeb] @hasMany(indexName: "byProyecto", fields: ["id"])
+}
+
+type ConsultaWeb @model @auth(rules: [
+  { allow: public, operations: [read, create, update, delete] }
+]) {
+  id: ID!
+  projectID: ID @index(name: "byProyecto")
+  imgAnteriorNombreImg: String
+  imgAnteriorSatellite: String
+  imgAnteriorYear: Int
+  imgAnteriorMesInicial: Int
+  imgAnteriorMesFinal: Int
+  imgAnteriorNubosidadMaxima: Int
+  imgAnteriorBandas: String
+  imgPosteriorNombreImg: String
+  imgPosteriorSatellite: String
+  imgPosteriorYear: Int
+  imgPosteriorMesInicial: Int
+  imgPosteriorMesFinal: Int
+  imgPosteriorNubosidadMaxima: Int
+  imgPosteriorBandas: String
+  fechaHoraConsulta: AWSDateTime @index(name: "byFechaConsulta")
+  usuarioEmailUpdate: String
+  rawConsulta: AWSJSON
+  resultadoConsulta: AWSJSON
+  
+  # Relationships
+  proyecto: ProyectoLegacy @belongsTo(fields: ["projectID"])
+}
+
+type ConsultaApi @model @auth(rules: [
+  { allow: public, operations: [read, create, update, delete] }
+]) {
+  id: ID!
+  projectID: String
+  cedulaCatastral: String
+  imgAnteriorNombreImg: String
+  imgAnteriorSatellite: String
+  imgAnteriorYear: Int
+  imgAnteriorMesInicial: Int
+  imgAnteriorMesFinal: Int
+  imgAnteriorNubosidadMaxima: Int
+  imgAnteriorBandas: String
+  imgPosteriorNombreImg: String
+  imgPosteriorSatellite: String
+  imgPosteriorYear: Int
+  imgPosteriorMesInicial: Int
+  imgPosteriorMesFinal: Int
+  imgPosteriorNubosidadMaxima: Int
+  imgPosteriorBandas: String
+  fechaHoraConsulta: AWSDateTime @index(name: "byFechaConsulta")
+  fechaHoraActualizacion: AWSDateTime
+  usuarioEmailUpdate: String
+  verificado: Boolean! @default(value: "false")
+  rawConsulta: AWSJSON
+  resultadoConsulta: AWSJSON
+  hashBlockchain: String @index(name: "byHashBlockchain")
+  indexNumberBlockchain: Int
+  timestampBlockchain: AWSDateTime
+  onchainBlockchain: Boolean! @default(value: "false")
+  txIdBlockchain: String
+}
+
+# IoT Sessions
+
+type IotSession @model @auth(rules: [
+  { allow: public, operations: [read, create, update, delete] }
+]) {
+  id: ID!
+  sessionId: String! @index(name: "bySessionId")
+  iotData: String!
+  createdAt: AWSDateTime
+  expiresAt: AWSDateTime! @index(name: "byExpiresAt")
+}
+
+# Formula Constructor Types
+
+type ConstructorFormulaCategoria @model @auth(rules: [
+  { allow: public, operations: [read, create, update, delete] }
+]) {
+  id: ID!
+  nombre: String! @index(name: "byNombre")
+  estado: Boolean! @default(value: "true")
+  
+  # Relationships
+  variables: [ConstructorFormulaVariable] @hasMany(indexName: "byCategoria", fields: ["id"])
+}
+
+type ConstructorFormulaVariable @model @auth(rules: [
+  { allow: public, operations: [read, create, update, delete] }
+]) {
+  id: ID!
+  nombre: String! @index(name: "byNombre")
+  simbolo: String! @index(name: "bySimbolo")
+  unidades: String!
+  descripcion: String!
+  categoriaId: ID @index(name: "byCategoria")
+  estado: Boolean! @default(value: "true")
+  
+  # Relationships
+  categoria: ConstructorFormulaCategoria @belongsTo(fields: ["categoriaId"])
+  formulas: [ConstructorFormulaVariableRel] @hasMany(indexName: "byVariable", fields: ["id"])
+}
+
+type ConstructorFormula @model @auth(rules: [
+  { allow: public, operations: [read, create, update, delete] }
+]) {
+  id: ID!
+  nombre: String! @index(name: "byNombre")
+  descripcion: String!
+  fuente: String
+  usuarioId: String @index(name: "byUsuario")
+  tipoFormula: TipoFormula! @default(value: "ALOMETRICA")
+  estado: Boolean! @default(value: "true")
+  expresionJson: AWSJSON
+  fechaCreacion: AWSDateTime
+  version: Int! @default(value: "1")
+  versionActiva: Boolean! @default(value: "true")
+  
+  # Relationships
+  variables: [ConstructorFormulaVariableRel] @hasMany(indexName: "byFormula", fields: ["id"])
+  teledeteccion: [FormulaTeledeteccion] @hasMany(indexName: "byFormula", fields: ["id"])
+  deepLearning: [FormulaDeepLearning] @hasMany(indexName: "byFormula", fields: ["id"])
+  historial: [FormulaHistorial] @hasMany(indexName: "byFormula", fields: ["id"])
+}
+
+type ConstructorFormulaVariableRel @model @auth(rules: [
+  { allow: public, operations: [read, create, update, delete] }
+]) {
+  id: ID!
+  formulaId: ID! @index(name: "byFormula")
+  variableId: ID! @index(name: "byVariable")
+  
+  # Relationships
+  formula: ConstructorFormula @belongsTo(fields: ["formulaId"])
+  variable: ConstructorFormulaVariable @belongsTo(fields: ["variableId"])
+}
+
+type FormulaTeledeteccion @model @auth(rules: [
+  { allow: public, operations: [read, create, update, delete] }
+]) {
+  id: ID!
+  formulaId: ID! @index(name: "byFormula")
+  codigoScript: String!
+  tipoEntrada: String!
+  parametrosJson: AWSJSON
+  
+  # Relationships
+  formula: ConstructorFormula @belongsTo(fields: ["formulaId"])
+}
+
+type FormulaDeepLearning @model @auth(rules: [
+  { allow: public, operations: [read, create, update, delete] }
+]) {
+  id: ID!
+  formulaId: ID! @index(name: "byFormula")
+  rutaModelo: String!
+  rutaEtiquetas: String!
+  parametrosJson: AWSJSON
+  
+  # Relationships
+  formula: ConstructorFormula @belongsTo(fields: ["formulaId"])
+}
+
+type FormulaHistorial @model @auth(rules: [
+  { allow: public, operations: [read, create, update, delete] }
+]) {
+  id: ID!
+  formulaId: ID! @index(name: "byFormula")
+  version: Int! @index(name: "byVersion")
+  fechaModificacion: AWSDateTime @index(name: "byFechaModificacion")
+  datosJson: AWSJSON!
+  usuarioId: String
+  
+  # Relationships
+  formula: ConstructorFormula @belongsTo(fields: ["formulaId"])
+}
+
+# System Management Types
+
+type AccessDeadline @model @auth(rules: [
+  { allow: public, operations: [read, create, update, delete] }
+]) {
+  id: ID!
+  subjectType: SubjectType!
+  subjectKey: String!
+  deadline: AWSDateTime!
+  createdAt: AWSDateTime
+  updatedAt: AWSDateTime
+}
+
+type RoutePermission @model @auth(rules: [
+  { allow: public, operations: [read, create, update, delete] }
+]) {
+  id: ID!
+  subjectType: SubjectType!
+  subjectKey: String!
+  tagName: String!
+  method: String!
+  allow: Boolean! @default(value: "true")
+  createdAt: AWSDateTime
+}
+
+type ApiCredential @model @auth(rules: [
+  { allow: public, operations: [read, create, update, delete] }
+]) {
+  id: ID!
+  name: String!
+  apiKeyHash: String!
+  active: Boolean! @default(value: "true")
+  allowedIps: String
+  expiresAt: AWSDateTime
+  createdAt: AWSDateTime
+}
+
+type PermVersion @model @auth(rules: [
+  { allow: public, operations: [read, create, update, delete] }
+]) {
+  id: ID!
+  updatedAt: AWSDateTime
+}
+
+# Custom Queries and Mutations - Temporarily removed for deployment
