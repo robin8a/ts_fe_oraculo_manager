@@ -10,6 +10,11 @@
       "StackName": "amplify-tsbeoraculoapi-dev-755cb",
       "StackId": "arn:aws:cloudformation:us-east-1:879381245127:stack/amplify-tsbeoraculoapi-dev-755cb/eca16480-dfb5-11f0-8fec-121090aacf5b",
       "AmplifyAppId": "d1y7zagn36dd1u"
+    },
+    "categories": {
+      "auth": {
+        "tsbeoraculoapi7e5484f0": {}
+      }
     }
   }
 }

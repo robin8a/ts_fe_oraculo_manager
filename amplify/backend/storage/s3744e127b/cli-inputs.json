@@ -1,0 +1,15 @@
+{
+  "resourceName": "s3744e127b",
+  "policyUUID": "744e127b",
+  "bucketName": "tsbeoraculoapi17262dec3bf24508a7b8ab10175b638e",
+  "storageAccess": "authAndGuest",
+  "guestAccess": [
+    "READ"
+  ],
+  "authAccess": [
+    "CREATE_AND_UPDATE",
+    "READ"
+  ],
+  "triggerFunction": "NONE",
+  "groupAccess": {}
+}

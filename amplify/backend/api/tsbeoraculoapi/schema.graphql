@@ -509,3 +509,72 @@ type PermVersion @model @auth(rules: [
 }
 
 # Custom Queries and Mutations - Temporarily removed for deployment
+
+
+## Features Implementation
+
+type UnitOfMeasure @model {
+  id: ID!
+  name: String!
+  abbreviation: String
+  features: [Feature] @hasMany
+}
+
+type Project @model {
+  id: ID!
+  name: String!
+  status: String!
+  trees: [Tree] @hasMany
+}
+
+type Template @model {
+  id: ID!
+  name: String!
+  description: String
+  type: Int! # 1. Form
+  version: String
+  is_latest: Boolean!
+  templateParent: Template @belongsTo # Self-referencing
+  templates: [Template] @hasMany
+  templateFeatures: [TemplateFeature] @hasMany
+  trees: [Tree] @hasMany
+}
+
+type Tree @model {
+  id: ID!
+  name: String!
+  status: String
+  project: Project @belongsTo 
+  template: Template @belongsTo
+  rawData: [RawData] @hasMany
+}
+
+type TemplateFeature @model {
+  id: ID!
+  template: Template @belongsTo
+  feature: Feature @belongsTo
+}
+
+type Feature @model {
+  id: ID!
+  feature_type: String # variable, constant, KPI
+  name: String!
+  description: String
+  feature_group: String
+  default_value: Float
+  is_float: Boolean
+  unitOfMeasure: UnitOfMeasure @belongsTo
+  templateFeatures: [TemplateFeature] @hasMany
+  rawDatas: [RawData] @hasMany
+}
+
+type RawData @model {
+  id: ID!
+  name: String
+  valueFloat: Float
+  valueString: String
+  start_date: AWSDateTime
+  end_date: AWSDateTime
+  feature: Feature @belongsTo 
+  tree: Tree @belongsTo
+}
