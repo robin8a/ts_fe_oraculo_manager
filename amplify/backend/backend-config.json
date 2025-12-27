@@ -43,6 +43,31 @@
       "service": "Cognito"
     }
   },
+  "function": {
+    "kobotoolboxProxy": {
+      "build": true,
+      "providerPlugin": "awscloudformation",
+      "service": "Lambda"
+    }
+  },
+  "parameters": {
+    "AMPLIFY_function_kobotoolboxProxy_deploymentBucketName": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "kobotoolboxProxy"
+        }
+      ]
+    },
+    "AMPLIFY_function_kobotoolboxProxy_s3Key": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "kobotoolboxProxy"
+        }
+      ]
+    }
+  },
   "storage": {
     "s3744e127b": {
       "dependsOn": [],

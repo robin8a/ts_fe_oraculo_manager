@@ -1,0 +1,8 @@
+{
+  "name": "kobotoolboxProxy",
+  "version": "1.0.0",
+  "description": "Lambda function to proxy KoboToolbox API requests",
+  "main": "index.js",
+  "dependencies": {}
+}
+

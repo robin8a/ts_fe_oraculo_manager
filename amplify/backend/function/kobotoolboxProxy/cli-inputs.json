@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "serviceConfiguration": {
+    "serviceName": "Lambda",
+    "serviceType": "AWS_LAMBDA",
+    "providerPlugin": "awscloudformation",
+    "dependsOn": [],
+    "build": true,
+    "runtime": "nodejs18.x",
+    "functionName": "kobotoolboxProxy",
+    "handler": "index.handler",
+    "roleName": "kobotoolboxProxyLambdaRole",
+    "environmentVariables": {}
+  }
+}
+

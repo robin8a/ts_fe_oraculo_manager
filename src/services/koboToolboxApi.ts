@@ -1,7 +1,9 @@
-import type { KoboToolboxConfig, KoboToolboxRow } from '../types/koboToolbox';
+import { API } from 'aws-amplify';
+import type { KoboToolboxRow } from '../types/koboToolbox';
 
 /**
  * Fetch data from KoboToolbox API
+ * Tries Lambda proxy first, falls back to direct request (will fail due to CORS)
  */
 export async function fetchData(
   serverUrl: string,
@@ -9,11 +11,59 @@ export async function fetchData(
   projectUid: string,
   format: 'json' | 'csv'
 ): Promise<KoboToolboxRow[]> {
+  // Try Lambda function first (if deployed)
+  try {
+    const response = await API.post('kobotoolboxProxy', '/', {
+      body: {
+        serverUrl,
+        apiKey,
+        projectUid,
+        format,
+      },
+    });
+
+    if (response.error) {
+      throw new Error(response.error);
+    }
+
+    // Handle response
+    const data = typeof response === 'string' ? JSON.parse(response) : response;
+    
+    if (format === 'json') {
+      return Array.isArray(data) ? data : data.results || [];
+    } else {
+      const csvText = typeof response === 'string' ? response : JSON.stringify(response);
+      return parseCSV(csvText);
+    }
+  } catch (lambdaError: any) {
+    // If Lambda function is not available, try direct request
+    if (lambdaError.message && (
+      lambdaError.message.includes('kobotoolboxProxy') ||
+      lambdaError.message.includes('not found') ||
+      lambdaError.code === 'NotFound'
+    )) {
+      console.warn('Lambda proxy not available, trying direct request (may fail due to CORS)');
+      return fetchDataDirect(serverUrl, apiKey, projectUid, format);
+    }
+    // If it's a different error from Lambda, throw it
+    throw lambdaError;
+  }
+}
+
+/**
+ * Direct fetch (fallback - will fail due to CORS in browser)
+ */
+async function fetchDataDirect(
+  serverUrl: string,
+  apiKey: string,
+  projectUid: string,
+  format: 'json' | 'csv'
+): Promise<KoboToolboxRow[]> {
   const baseUrl = serverUrl.startsWith('http') ? serverUrl : `https://${serverUrl}`;
-  const url = `${baseUrl}/api/v2/assets/${projectUid}/data.${format}`;
+  const targetUrl = `${baseUrl}/api/v2/assets/${projectUid}/data.${format}`;
 
   try {
-    const response = await fetch(url, {
+    const response = await fetch(targetUrl, {
       method: 'GET',
       headers: {
         'Authorization': `Token ${apiKey}`,
@@ -33,25 +83,80 @@ export async function fetchData(
 
     if (format === 'json') {
       const data = await response.json();
-      // KoboToolbox JSON format returns results array
       return Array.isArray(data) ? data : data.results || [];
     } else {
-      // CSV format
       const csvText = await response.text();
       return parseCSV(csvText);
     }
   } catch (error: any) {
-    if (error.message) {
-      throw error;
+    // Check if it's a CORS error
+    if (error.message && (
+      error.message.includes('CORS') || 
+      error.message.includes('Access-Control-Allow-Origin') ||
+      error.message.includes('not allowed by Access-Control-Allow-Headers') ||
+      error.name === 'TypeError' ||
+      error.message.includes('Failed to fetch')
+    )) {
+      throw new Error(
+        'CORS Error: KoboToolbox API blocks direct browser requests.\n\n' +
+        'REQUIRED: Deploy the Lambda proxy function:\n\n' +
+        '1. Run: amplify push\n' +
+        '2. Wait for deployment\n' +
+        '3. Try again\n\n' +
+        'OR use a CORS browser extension for development testing.'
+      );
     }
-    throw new Error(`Network error: ${error.message || 'Failed to connect to KoboToolbox'}`);
+    throw error;
   }
 }
 
 /**
  * Download audio file from KoboToolbox
+ * Tries Lambda proxy first, falls back to direct request
  */
 export async function downloadAudioFile(
+  downloadUrl: string,
+  apiKey: string
+): Promise<Blob> {
+  // Try Lambda function first (if deployed)
+  try {
+    const response = await API.post('kobotoolboxProxy', '/', {
+      body: {
+        downloadUrl,
+        apiKey,
+      },
+    });
+
+    // Convert base64 response to Blob
+    if (response.isBase64Encoded && response.body) {
+      const binaryString = atob(response.body);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      return new Blob([bytes], { type: 'audio/mpeg' });
+    }
+
+    // Fallback: try direct fetch
+    return downloadAudioFileDirect(downloadUrl, apiKey);
+  } catch (lambdaError: any) {
+    // If Lambda function is not available, try direct request
+    if (lambdaError.message && (
+      lambdaError.message.includes('kobotoolboxProxy') ||
+      lambdaError.message.includes('not found') ||
+      lambdaError.code === 'NotFound'
+    )) {
+      console.warn('Lambda proxy not available, trying direct request (may fail due to CORS)');
+      return downloadAudioFileDirect(downloadUrl, apiKey);
+    }
+    throw new Error(`Error downloading audio file: ${lambdaError.message}`);
+  }
+}
+
+/**
+ * Direct download (fallback - will fail due to CORS in browser)
+ */
+async function downloadAudioFileDirect(
   downloadUrl: string,
   apiKey: string
 ): Promise<Blob> {
@@ -69,6 +174,22 @@ export async function downloadAudioFile(
 
     return await response.blob();
   } catch (error: any) {
+    if (error.message && (
+      error.message.includes('CORS') || 
+      error.message.includes('Access-Control-Allow-Origin') ||
+      error.message.includes('not allowed by Access-Control-Allow-Headers') ||
+      error.name === 'TypeError' ||
+      error.message.includes('Failed to fetch')
+    )) {
+      throw new Error(
+        'CORS Error: Cannot download audio file directly from browser.\n\n' +
+        'Please deploy the Lambda proxy function:\n' +
+        '1. Run: amplify push\n' +
+        '2. Wait for deployment\n' +
+        '3. Try again\n\n' +
+        'OR use a CORS browser extension for development testing.'
+      );
+    }
     throw new Error(`Error downloading audio file: ${error.message}`);
   }
 }
