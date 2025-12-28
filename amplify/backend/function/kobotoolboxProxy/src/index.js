@@ -3,18 +3,24 @@ const http = require('http');
 
 exports.handler = async (event) => {
   // Support both Function URL and API Gateway event formats
-  const httpMethod = event.requestContext?.http?.method || event.httpMethod || event.requestContext?.httpMethod;
+  // Function URL: event.requestContext.http.method
+  // API Gateway: event.httpMethod
+  const httpMethod = event.requestContext?.http?.method || event.httpMethod || event.requestContext?.httpMethod || 'POST';
   const isOptions = httpMethod === 'OPTIONS';
+  
+  // CORS headers for all responses
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Requested-With',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Access-Control-Max-Age': '86400',
+  };
   
   // Handle CORS preflight
   if (isOptions) {
     return {
       statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type,Authorization',
-        'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-      },
+      headers: corsHeaders,
       body: '',
     };
   }
@@ -30,7 +36,7 @@ exports.handler = async (event) => {
         return {
           statusCode: 400,
           headers: {
-            'Access-Control-Allow-Origin': '*',
+            ...corsHeaders,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({ error: 'Invalid JSON in request body' }),
@@ -52,7 +58,7 @@ exports.handler = async (event) => {
       return {
         statusCode: 400,
         headers: {
-          'Access-Control-Allow-Origin': '*',
+          ...corsHeaders,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ error: 'Missing required parameters' }),
@@ -92,7 +98,7 @@ exports.handler = async (event) => {
             resolve({
               statusCode: res.statusCode,
               headers: {
-                'Access-Control-Allow-Origin': '*',
+                ...corsHeaders,
                 'Content-Type': contentType,
               },
               body: base64Data,
@@ -103,7 +109,7 @@ exports.handler = async (event) => {
             resolve({
               statusCode: res.statusCode,
               headers: {
-                'Access-Control-Allow-Origin': '*',
+                ...corsHeaders,
                 'Content-Type': contentType,
               },
               body: data,
@@ -116,7 +122,7 @@ exports.handler = async (event) => {
         reject({
           statusCode: 500,
           headers: {
-            'Access-Control-Allow-Origin': '*',
+            ...corsHeaders,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({ error: error.message }),
@@ -129,7 +135,7 @@ exports.handler = async (event) => {
     return {
       statusCode: 500,
       headers: {
-        'Access-Control-Allow-Origin': '*',
+        ...corsHeaders,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ error: error.message }),

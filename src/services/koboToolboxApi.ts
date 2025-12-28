@@ -2,9 +2,14 @@ import type { KoboToolboxRow } from '../types/koboToolbox';
 
 // Lambda Function URL for KoboToolbox proxy
 // Can be overridden via environment variable VITE_KOBOTOOLBOX_PROXY_URL
-const LAMBDA_FUNCTION_URL = 
-  import.meta.env.VITE_KOBOTOOLBOX_PROXY_URL || 
-  'https://ah5rtowwsvsmrnosm7rgjrejjm0redcf.lambda-url.us-east-1.on.aws/';
+// Remove trailing slash if present
+const getFunctionUrl = () => {
+  const url = import.meta.env.VITE_KOBOTOOLBOX_PROXY_URL || 
+    'https://ah5rtowwsvsmrnosm7rgjrejjm0redcf.lambda-url.us-east-1.on.aws/';
+  return url.endsWith('/') ? url.slice(0, -1) : url;
+};
+
+const LAMBDA_FUNCTION_URL = getFunctionUrl();
 
 /**
  * Fetch data from KoboToolbox API via Lambda Function URL
@@ -20,8 +25,10 @@ export async function fetchData(
     console.log('Request payload:', { serverUrl, projectUid, format, apiKey: '***' });
     
     // Call Lambda Function URL directly
+    // Note: Function URLs handle CORS automatically if configured in AWS
     const response = await fetch(LAMBDA_FUNCTION_URL, {
       method: 'POST',
+      mode: 'cors', // Explicitly request CORS
       headers: {
         'Content-Type': 'application/json',
       },
