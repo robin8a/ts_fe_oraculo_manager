@@ -159,14 +159,58 @@ export async function downloadAudioFile(
       }),
     });
 
+    // Check content type to determine response format
+    const contentType = response.headers.get('content-type') || '';
+    console.log('Lambda response content-type:', contentType);
+    
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(`Lambda function error: ${response.status} - ${errorText}`);
     }
 
-    // Lambda Function URL returns the Lambda response
-    // Lambda returns: { statusCode: 200, body: "base64encoded...", headers: {...}, isBase64Encoded: true }
-    const lambdaResponse = await response.json();
+    // Lambda Function URL may return:
+    // 1. Binary audio directly (if Function URL auto-decodes base64)
+    // 2. JSON with base64-encoded body: { statusCode: 200, body: "base64...", isBase64Encoded: true }
+    
+    // Check if response is binary audio
+    if (contentType.includes('audio/') || contentType.includes('application/octet-stream') || 
+        contentType.includes('video/')) {
+      console.log('Received binary audio data directly from Function URL');
+      const audioBlob = await response.blob();
+      return audioBlob;
+    }
+
+    // Otherwise, try to parse as JSON
+    const responseText = await response.text();
+    console.log('Lambda response text (first 200 chars):', responseText.substring(0, 200));
+    
+    // Check if it's actually binary data (starts with binary bytes, not JSON)
+    if (responseText.length > 0 && (responseText.charCodeAt(0) < 32 || responseText.startsWith('ftyp'))) {
+      console.log('Response appears to be binary data (not JSON), converting to Blob');
+      const binaryString = responseText;
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      let mimeType = 'audio/mpeg';
+      const urlLower = downloadUrl.toLowerCase();
+      if (urlLower.includes('.m4a')) mimeType = 'audio/mp4';
+      else if (urlLower.includes('.wav')) mimeType = 'audio/wav';
+      else if (urlLower.includes('.ogg')) mimeType = 'audio/ogg';
+      else if (urlLower.includes('.mp3')) mimeType = 'audio/mpeg';
+      return new Blob([bytes], { type: mimeType });
+    }
+    
+    let lambdaResponse: any;
+    try {
+      lambdaResponse = JSON.parse(responseText);
+    } catch (jsonError: any) {
+      // If not JSON and not binary, it might be an error message
+      if (responseText.includes('error') || responseText.includes('Error')) {
+        throw new Error(`Lambda returned error: ${responseText}`);
+      }
+      throw new Error(`Failed to parse Lambda response as JSON: ${jsonError.message}`);
+    }
     
     // Check if response has statusCode (Lambda format)
     if (lambdaResponse.statusCode) {
@@ -179,12 +223,31 @@ export async function downloadAudioFile(
 
       // Convert base64 response to Blob
       if (lambdaResponse.body) {
-        const binaryString = atob(lambdaResponse.body);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
+        try {
+          const binaryString = atob(lambdaResponse.body);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          
+          // Determine MIME type from download URL
+          let mimeType = 'audio/mpeg'; // default
+          const urlLower = downloadUrl.toLowerCase();
+          if (urlLower.includes('.m4a')) {
+            mimeType = 'audio/mp4';
+          } else if (urlLower.includes('.wav')) {
+            mimeType = 'audio/wav';
+          } else if (urlLower.includes('.ogg')) {
+            mimeType = 'audio/ogg';
+          } else if (urlLower.includes('.mp3')) {
+            mimeType = 'audio/mpeg';
+          }
+          
+          console.log(`Creating Blob with MIME type: ${mimeType}, size: ${bytes.length} bytes`);
+          return new Blob([bytes], { type: mimeType });
+        } catch (base64Error: any) {
+          throw new Error(`Failed to decode base64 audio data: ${base64Error.message}`);
         }
-        return new Blob([bytes], { type: 'audio/mpeg' });
       }
 
       throw new Error('No audio data in Lambda response');
