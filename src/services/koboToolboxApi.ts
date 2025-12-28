@@ -123,9 +123,29 @@ export async function fetchData(
  */
 export async function downloadAudioFile(
   downloadUrl: string,
-  apiKey: string
+  apiKey: string,
+  serverUrl?: string
 ): Promise<Blob> {
   try {
+    // Validate URL before sending
+    if (!downloadUrl || typeof downloadUrl !== 'string') {
+      throw new Error('Invalid downloadUrl: must be a non-empty string');
+    }
+
+    // Ensure we have a full URL
+    let fullUrl = downloadUrl;
+    if (!downloadUrl.startsWith('http://') && !downloadUrl.startsWith('https://')) {
+      // Construct full URL if it's relative
+      const baseUrl = serverUrl 
+        ? (serverUrl.startsWith('http') ? serverUrl : `https://${serverUrl}`)
+        : 'https://kf.kobotoolbox.org';
+      fullUrl = downloadUrl.startsWith('/') 
+        ? `${baseUrl}${downloadUrl}`
+        : `${baseUrl}/${downloadUrl}`;
+    }
+
+    console.log('Downloading audio from URL:', fullUrl);
+
     // Call Lambda Function URL directly
     const response = await fetch(LAMBDA_FUNCTION_URL, {
       method: 'POST',
@@ -133,8 +153,9 @@ export async function downloadAudioFile(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        downloadUrl,
+        downloadUrl: fullUrl,
         apiKey,
+        serverUrl: serverUrl || 'kf.kobotoolbox.org', // Pass serverUrl for URL construction fallback
       }),
     });
 

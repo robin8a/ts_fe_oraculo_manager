@@ -300,8 +300,67 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
                   currentFeature: columnName,
                 });
 
-                // Download audio file
-                const audioBlob = await downloadAudioFile(value, config.apiKey);
+                // Extract full download URL
+                // KoboToolbox may store audio as relative path, filename, or full URL
+                let audioUrl = value;
+                console.log(`Audio column "${columnName}" value:`, value);
+                console.log(`Row attachments:`, row._attachments);
+                
+                // If it's not a full URL, try to construct it
+                if (!audioUrl.startsWith('http://') && !audioUrl.startsWith('https://')) {
+                  // Check if there's an attachment with this filename or matching pattern
+                  if (row._attachments && Array.isArray(row._attachments)) {
+                    // Try to find attachment by filename match
+                    const attachment = row._attachments.find((att: any) => {
+                      if (!att) return false;
+                      const attFilename = att.filename || '';
+                      const attUrl = att.download_url || '';
+                      return (
+                        attFilename === audioUrl ||
+                        attFilename.includes(audioUrl) ||
+                        audioUrl.includes(attFilename) ||
+                        attUrl.includes(audioUrl) ||
+                        audioUrl.includes(attUrl.split('/').pop() || '')
+                      );
+                    });
+                    
+                    if (attachment?.download_url) {
+                      audioUrl = attachment.download_url;
+                      console.log(`Found attachment URL: ${audioUrl}`);
+                    } else {
+                      // Try to construct URL from server and value
+                      const baseUrl = config.serverUrl.startsWith('http') 
+                        ? config.serverUrl 
+                        : `https://${config.serverUrl}`;
+                      // KoboToolbox attachment URLs are typically at /media/original/ or /attachments/
+                      // Try common paths
+                      if (audioUrl.startsWith('/')) {
+                        audioUrl = `${baseUrl}${audioUrl}`;
+                      } else {
+                        audioUrl = `${baseUrl}/media/original/${audioUrl}`;
+                      }
+                      console.log(`Constructed URL: ${audioUrl}`);
+                    }
+                  } else {
+                    // Construct URL from server
+                    const baseUrl = config.serverUrl.startsWith('http') 
+                      ? config.serverUrl 
+                      : `https://${config.serverUrl}`;
+                    if (audioUrl.startsWith('/')) {
+                      audioUrl = `${baseUrl}${audioUrl}`;
+                    } else {
+                      audioUrl = `${baseUrl}/media/original/${audioUrl}`;
+                    }
+                    console.log(`Constructed URL (no attachments): ${audioUrl}`);
+                  }
+                } else {
+                  console.log(`Using full URL: ${audioUrl}`);
+                }
+
+                console.log(`Final audio URL: ${audioUrl}`);
+
+                // Download audio file (pass serverUrl for URL construction if needed)
+                const audioBlob = await downloadAudioFile(audioUrl, config.apiKey, config.serverUrl);
                 const audioFile = blobToFile(audioBlob, `${columnName}_${rowIndex + 1}.mp3`);
 
                 // Upload to S3

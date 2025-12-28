@@ -49,7 +49,50 @@ exports.handler = async (event) => {
     let targetUrl;
     if (downloadUrl) {
       // For audio file downloads
-      targetUrl = downloadUrl;
+      // Validate and normalize the URL
+      if (typeof downloadUrl !== 'string' || downloadUrl.trim() === '') {
+        return {
+          statusCode: 400,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ error: 'Invalid downloadUrl: must be a non-empty string' }),
+        };
+      }
+      
+      // If it's not a full URL, try to construct it
+      if (!downloadUrl.startsWith('http://') && !downloadUrl.startsWith('https://')) {
+        // It's a relative path, construct full URL
+        const baseUrl = serverUrl && serverUrl.startsWith('http') 
+          ? serverUrl 
+          : serverUrl 
+          ? `https://${serverUrl}`
+          : 'https://kf.kobotoolbox.org'; // Default fallback
+        targetUrl = downloadUrl.startsWith('/') 
+          ? `${baseUrl}${downloadUrl}`
+          : `${baseUrl}/${downloadUrl}`;
+      } else {
+        targetUrl = downloadUrl;
+      }
+      
+      // Validate URL format
+      try {
+        new URL(targetUrl);
+      } catch (urlError) {
+        return {
+          statusCode: 400,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ 
+            error: `Invalid URL format: ${targetUrl}`,
+            originalUrl: downloadUrl,
+            details: urlError.message 
+          }),
+        };
+      }
     } else if (serverUrl && projectUid && format) {
       // For data fetching
       const baseUrl = serverUrl.startsWith('http') ? serverUrl : `https://${serverUrl}`;
@@ -66,7 +109,22 @@ exports.handler = async (event) => {
     }
 
     // Make request to KoboToolbox API
-    const url = new URL(targetUrl);
+    let url;
+    try {
+      url = new URL(targetUrl);
+    } catch (urlError) {
+      return {
+        statusCode: 400,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          error: `Invalid URL: ${targetUrl}`,
+          details: urlError.message 
+        }),
+      };
+    }
     const options = {
       hostname: url.hostname,
       path: url.pathname + url.search,
