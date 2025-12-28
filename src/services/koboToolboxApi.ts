@@ -1,9 +1,13 @@
-import { API } from 'aws-amplify';
 import type { KoboToolboxRow } from '../types/koboToolbox';
 
+// Lambda Function URL for KoboToolbox proxy
+// Can be overridden via environment variable VITE_KOBOTOOLBOX_PROXY_URL
+const LAMBDA_FUNCTION_URL = 
+  import.meta.env.VITE_KOBOTOOLBOX_PROXY_URL || 
+  'https://ah5rtowwsvsmrnosm7rgjrejjm0redcf.lambda-url.us-east-1.on.aws/';
+
 /**
- * Fetch data from KoboToolbox API
- * Tries Lambda proxy first, falls back to direct request (will fail due to CORS)
+ * Fetch data from KoboToolbox API via Lambda Function URL
  */
 export async function fetchData(
   serverUrl: string,
@@ -11,203 +15,137 @@ export async function fetchData(
   projectUid: string,
   format: 'json' | 'csv'
 ): Promise<KoboToolboxRow[]> {
-  // Try Lambda function first (if deployed)
-  // Note: Lambda function must be deployed and configured as REST API
   try {
-    const response = await API.post('kobotoolboxProxy', '/', {
-      body: {
+    // Call Lambda Function URL directly
+    const response = await fetch(LAMBDA_FUNCTION_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
         serverUrl,
         apiKey,
         projectUid,
         format,
-      },
-    });
-
-    console.log('Lambda response:', response);
-
-    // Check if response has error
-    if (response.error) {
-      throw new Error(response.error);
-    }
-
-    // Lambda returns the body directly or wrapped
-    let responseBody = response;
-    if (response.body) {
-      responseBody = typeof response.body === 'string' ? JSON.parse(response.body) : response.body;
-    } else if (typeof response === 'string') {
-      try {
-        responseBody = JSON.parse(response);
-      } catch {
-        // If not JSON, treat as text (CSV)
-        responseBody = response;
-      }
-    }
-
-    // Handle response based on format
-    if (format === 'json') {
-      const data = Array.isArray(responseBody) ? responseBody : responseBody.results || responseBody;
-      return Array.isArray(data) ? data : [];
-    } else {
-      // CSV format
-      const csvText = typeof responseBody === 'string' ? responseBody : JSON.stringify(responseBody);
-      return parseCSV(csvText);
-    }
-  } catch (lambdaError: any) {
-    console.warn('Lambda proxy not available:', lambdaError.message);
-    
-    // If Lambda function is not available, try direct request
-    // This will work if CORS extension is enabled, otherwise will show CORS error
-    return fetchDataDirect(serverUrl, apiKey, projectUid, format);
-  }
-}
-
-/**
- * Direct fetch (fallback - will fail due to CORS in browser)
- */
-async function fetchDataDirect(
-  serverUrl: string,
-  apiKey: string,
-  projectUid: string,
-  format: 'json' | 'csv'
-): Promise<KoboToolboxRow[]> {
-  const baseUrl = serverUrl.startsWith('http') ? serverUrl : `https://${serverUrl}`;
-  const targetUrl = `${baseUrl}/api/v2/assets/${projectUid}/data.${format}`;
-
-  try {
-    const response = await fetch(targetUrl, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Token ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
+      }),
     });
 
     if (!response.ok) {
-      if (response.status === 401) {
-        throw new Error('Invalid API key. Please check your credentials.');
-      }
-      if (response.status === 404) {
-        throw new Error('Project not found. Please check the project UID.');
-      }
-      throw new Error(`Failed to fetch data: ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`Lambda function error: ${response.status} - ${errorText}`);
     }
 
-    if (format === 'json') {
-      const data = await response.json();
-      return Array.isArray(data) ? data : data.results || [];
+    // Lambda Function URL returns the Lambda response directly
+    // Lambda returns: { statusCode: 200, body: "...", headers: {...} }
+    const lambdaResponse = await response.json();
+    
+    // Check if response has statusCode (Lambda format) or is direct data
+    if (lambdaResponse.statusCode) {
+      if (lambdaResponse.statusCode !== 200) {
+        const errorBody = typeof lambdaResponse.body === 'string' 
+          ? lambdaResponse.body 
+          : JSON.stringify(lambdaResponse.body);
+        throw new Error(errorBody || `Lambda returned status ${lambdaResponse.statusCode}`);
+      }
+
+      // Parse the body
+      let responseBody: any;
+      if (typeof lambdaResponse.body === 'string') {
+        try {
+          responseBody = JSON.parse(lambdaResponse.body);
+        } catch {
+          responseBody = lambdaResponse.body; // Keep as string for CSV
+        }
+      } else {
+        responseBody = lambdaResponse.body;
+      }
+      
+      // Handle response based on format
+      if (format === 'json') {
+        const data = Array.isArray(responseBody) ? responseBody : responseBody.results || responseBody;
+        return Array.isArray(data) ? data : [];
+      } else {
+        // CSV format
+        const csvText = typeof responseBody === 'string' ? responseBody : JSON.stringify(responseBody);
+        return parseCSV(csvText);
+      }
     } else {
-      const csvText = await response.text();
-      return parseCSV(csvText);
+      // Direct response (Function URL might unwrap it)
+      if (format === 'json') {
+        const data = Array.isArray(lambdaResponse) ? lambdaResponse : lambdaResponse.results || lambdaResponse;
+        return Array.isArray(data) ? data : [];
+      } else {
+        const csvText = typeof lambdaResponse === 'string' ? lambdaResponse : JSON.stringify(lambdaResponse);
+        return parseCSV(csvText);
+      }
     }
+
   } catch (error: any) {
-    // Check if it's a CORS error
-    if (error.message && (
-      error.message.includes('CORS') || 
-      error.message.includes('Access-Control-Allow-Origin') ||
-      error.message.includes('not allowed by Access-Control-Allow-Headers') ||
-      error.name === 'TypeError' ||
-      error.message.includes('Failed to fetch')
-    )) {
-      throw new Error(
-        'CORS Error: KoboToolbox API blocks direct browser requests.\n\n' +
-        'REQUIRED: Deploy the Lambda proxy function:\n\n' +
-        '1. Run: amplify push\n' +
-        '2. Wait for deployment\n' +
-        '3. Try again\n\n' +
-        'OR use a CORS browser extension for development testing.'
-      );
-    }
-    throw error;
+    console.error('Lambda proxy error:', error);
+    throw new Error(`Failed to fetch data via Lambda: ${error.message}`);
   }
 }
 
+
 /**
- * Download audio file from KoboToolbox
- * Tries Lambda proxy first, falls back to direct request
+ * Download audio file from KoboToolbox via Lambda Function URL
  */
 export async function downloadAudioFile(
   downloadUrl: string,
   apiKey: string
 ): Promise<Blob> {
-  // Try Lambda function first (if deployed)
   try {
-    const response = await API.post('kobotoolboxProxy', '/', {
-      body: {
+    // Call Lambda Function URL directly
+    const response = await fetch(LAMBDA_FUNCTION_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
         downloadUrl,
         apiKey,
-      },
-    });
-
-    // Convert base64 response to Blob
-    if (response.isBase64Encoded && response.body) {
-      const binaryString = atob(response.body);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      return new Blob([bytes], { type: 'audio/mpeg' });
-    }
-
-    // Fallback: try direct fetch
-    return downloadAudioFileDirect(downloadUrl, apiKey);
-  } catch (lambdaError: any) {
-    // If Lambda function is not available, try direct request
-    if (lambdaError.message && (
-      lambdaError.message.includes('kobotoolboxProxy') ||
-      lambdaError.message.includes('not found') ||
-      lambdaError.message.includes('does not exist') ||
-      lambdaError.code === 'NotFound' ||
-      lambdaError.code === 'ResourceNotFoundException'
-    )) {
-      console.warn('Lambda proxy not available, trying direct request (may fail due to CORS)');
-      return downloadAudioFileDirect(downloadUrl, apiKey);
-    }
-    // Fall back to direct request on any error
-    console.warn('Lambda proxy failed, falling back to direct request');
-    return downloadAudioFileDirect(downloadUrl, apiKey);
-  }
-}
-
-/**
- * Direct download (fallback - will fail due to CORS in browser)
- */
-async function downloadAudioFileDirect(
-  downloadUrl: string,
-  apiKey: string
-): Promise<Blob> {
-  try {
-    const response = await fetch(downloadUrl, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Token ${apiKey}`,
-      },
+      }),
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to download audio file: ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`Lambda function error: ${response.status} - ${errorText}`);
     }
 
-    return await response.blob();
-  } catch (error: any) {
-    if (error.message && (
-      error.message.includes('CORS') || 
-      error.message.includes('Access-Control-Allow-Origin') ||
-      error.message.includes('not allowed by Access-Control-Allow-Headers') ||
-      error.name === 'TypeError' ||
-      error.message.includes('Failed to fetch')
-    )) {
-      throw new Error(
-        'CORS Error: Cannot download audio file directly from browser.\n\n' +
-        'Please deploy the Lambda proxy function:\n' +
-        '1. Run: amplify push\n' +
-        '2. Wait for deployment\n' +
-        '3. Try again\n\n' +
-        'OR use a CORS browser extension for development testing.'
-      );
+    // Lambda Function URL returns the Lambda response
+    // Lambda returns: { statusCode: 200, body: "base64encoded...", headers: {...}, isBase64Encoded: true }
+    const lambdaResponse = await response.json();
+    
+    // Check if response has statusCode (Lambda format)
+    if (lambdaResponse.statusCode) {
+      if (lambdaResponse.statusCode !== 200) {
+        const errorBody = typeof lambdaResponse.body === 'string' 
+          ? lambdaResponse.body 
+          : JSON.stringify(lambdaResponse.body);
+        throw new Error(errorBody || `Lambda returned status ${lambdaResponse.statusCode}`);
+      }
+
+      // Convert base64 response to Blob
+      if (lambdaResponse.body) {
+        const binaryString = atob(lambdaResponse.body);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        return new Blob([bytes], { type: 'audio/mpeg' });
+      }
+
+      throw new Error('No audio data in Lambda response');
+    } else {
+      // Direct response (shouldn't happen for binary, but handle it)
+      throw new Error('Unexpected response format from Lambda');
     }
-    throw new Error(`Error downloading audio file: ${error.message}`);
+  } catch (error: any) {
+    console.error('Lambda proxy error downloading audio:', error);
+    throw new Error(`Failed to download audio via Lambda: ${error.message}`);
   }
 }
+
 
 /**
  * Parse CSV text into array of objects
