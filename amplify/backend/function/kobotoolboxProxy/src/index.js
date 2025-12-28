@@ -2,8 +2,12 @@ const https = require('https');
 const http = require('http');
 
 exports.handler = async (event) => {
+  // Support both Function URL and API Gateway event formats
+  const httpMethod = event.requestContext?.http?.method || event.httpMethod || event.requestContext?.httpMethod;
+  const isOptions = httpMethod === 'OPTIONS';
+  
   // Handle CORS preflight
-  if (event.httpMethod === 'OPTIONS') {
+  if (isOptions) {
     return {
       statusCode: 200,
       headers: {
@@ -16,10 +20,22 @@ exports.handler = async (event) => {
   }
 
   try {
-    // Parse body - could be string or object
+    // Parse body - Function URL and API Gateway both send body as string
     let bodyData = {};
     if (event.body) {
-      bodyData = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
+      try {
+        bodyData = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
+      } catch (parseError) {
+        console.error('Error parsing body:', parseError);
+        return {
+          statusCode: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ error: 'Invalid JSON in request body' }),
+        };
+      }
     }
     
     const { serverUrl, apiKey, projectUid, format, downloadUrl } = bodyData;

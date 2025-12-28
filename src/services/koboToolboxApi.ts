@@ -16,6 +16,9 @@ export async function fetchData(
   format: 'json' | 'csv'
 ): Promise<KoboToolboxRow[]> {
   try {
+    console.log('Calling Lambda Function URL:', LAMBDA_FUNCTION_URL);
+    console.log('Request payload:', { serverUrl, projectUid, format, apiKey: '***' });
+    
     // Call Lambda Function URL directly
     const response = await fetch(LAMBDA_FUNCTION_URL, {
       method: 'POST',
@@ -30,8 +33,16 @@ export async function fetchData(
       }),
     });
 
+    console.log('Lambda response status:', response.status, response.statusText);
+
     if (!response.ok) {
-      const errorText = await response.text();
+      let errorText = '';
+      try {
+        errorText = await response.text();
+        console.error('Lambda error response:', errorText);
+      } catch (e) {
+        errorText = `HTTP ${response.status}: ${response.statusText}`;
+      }
       throw new Error(`Lambda function error: ${response.status} - ${errorText}`);
     }
 
@@ -82,6 +93,19 @@ export async function fetchData(
 
   } catch (error: any) {
     console.error('Lambda proxy error:', error);
+    
+    // Check for network/CORS errors
+    if (error.message === 'Failed to fetch' || error.name === 'TypeError') {
+      throw new Error(
+        `Network error: Cannot reach Lambda Function URL.\n\n` +
+        `Please verify:\n` +
+        `1. Lambda Function URL is correct: ${LAMBDA_FUNCTION_URL}\n` +
+        `2. Function URL is enabled and accessible\n` +
+        `3. No CORS restrictions are blocking the request\n\n` +
+        `Original error: ${error.message}`
+      );
+    }
+    
     throw new Error(`Failed to fetch data via Lambda: ${error.message}`);
   }
 }

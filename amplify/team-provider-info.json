@@ -18,7 +18,7 @@
       "function": {
         "kobotoolboxProxy": {
           "deploymentBucketName": "amplify-tsbeoraculoapi-dev-755cb-deployment",
-          "s3Key": "amplify-builds/kobotoolboxProxy-6d446f702b6d4d324c71-build.zip"
+          "s3Key": "amplify-builds/kobotoolboxProxy-506f41617a414f5a726e-build.zip"
         }
       },
       "api": {
