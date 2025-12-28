@@ -12,6 +12,32 @@ const getFunctionUrl = () => {
 const LAMBDA_FUNCTION_URL = getFunctionUrl();
 
 /**
+ * Test Function URL connectivity (for debugging)
+ * Call this from browser console: window.testKoboToolboxProxy()
+ */
+if (typeof window !== 'undefined') {
+  (window as any).testKoboToolboxProxy = async () => {
+    console.log('Testing Lambda Function URL:', LAMBDA_FUNCTION_URL);
+    try {
+      const response = await fetch(LAMBDA_FUNCTION_URL, {
+        method: 'POST',
+        mode: 'cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ test: 'connectivity' }),
+      });
+      const text = await response.text();
+      console.log('Response status:', response.status);
+      console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+      console.log('Response body:', text);
+      return { success: true, status: response.status, body: text };
+    } catch (error: any) {
+      console.error('Test failed:', error);
+      return { success: false, error: error.message };
+    }
+  };
+}
+
+/**
  * Fetch data from KoboToolbox API via Lambda Function URL
  */
 export async function fetchData(
@@ -26,11 +52,15 @@ export async function fetchData(
     
     // Call Lambda Function URL directly
     // Note: Function URLs handle CORS automatically if configured in AWS
+    console.log('Making request to:', LAMBDA_FUNCTION_URL);
+    
     const response = await fetch(LAMBDA_FUNCTION_URL, {
       method: 'POST',
       mode: 'cors', // Explicitly request CORS
+      credentials: 'omit', // Don't send cookies
       headers: {
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
       },
       body: JSON.stringify({
         serverUrl,
@@ -38,19 +68,51 @@ export async function fetchData(
         projectUid,
         format,
       }),
+    }).catch((fetchError: any) => {
+      console.error('Fetch error details:', {
+        message: fetchError.message,
+        name: fetchError.name,
+        stack: fetchError.stack,
+      });
+      throw new Error(
+        `Network error: Cannot reach Lambda Function URL.\n\n` +
+        `Error: ${fetchError.message}\n\n` +
+        `Please verify:\n` +
+        `1. Lambda Function URL is correct: ${LAMBDA_FUNCTION_URL}\n` +
+        `2. Function URL is enabled and accessible\n` +
+        `3. CORS is configured in AWS Lambda Console\n` +
+        `4. No browser extensions are blocking the request\n\n` +
+        `To enable CORS, run:\n` +
+        `aws lambda update-function-url-config --function-name kobotoolboxProxy-dev --cors '{"AllowOrigins":["*"],"AllowMethods":["POST","OPTIONS"],"AllowHeaders":["Content-Type","Authorization","X-Requested-With"],"MaxAge":86400}'`
+      );
     });
 
     console.log('Lambda response status:', response.status, response.statusText);
+    console.log('Lambda response headers:', Object.fromEntries(response.headers.entries()));
 
     if (!response.ok) {
       let errorText = '';
       try {
         errorText = await response.text();
-        console.error('Lambda error response:', errorText);
-      } catch (e) {
+        console.error('Lambda error response (first 500 chars):', errorText.substring(0, 500));
+        
+        // Check if it's HTML (404 page) instead of JSON error
+        if (errorText.includes('<!doctype html>') || errorText.includes('<html>')) {
+          throw new Error(
+            `Lambda Function URL returned HTML (404). This usually means:\n` +
+            `1. The Lambda function is not deployed or not accessible\n` +
+            `2. The Function URL is pointing to the wrong function\n` +
+            `3. The Function URL configuration is incorrect\n\n` +
+            `Please verify the Function URL in AWS Lambda Console.`
+          );
+        }
+      } catch (e: any) {
+        if (e.message && e.message.includes('Lambda Function URL returned HTML')) {
+          throw e;
+        }
         errorText = `HTTP ${response.status}: ${response.statusText}`;
       }
-      throw new Error(`Lambda function error: ${response.status} - ${errorText}`);
+      throw new Error(`Lambda function error: ${response.status} - ${errorText.substring(0, 200)}`);
     }
 
     // Lambda Function URL returns the Lambda response directly
