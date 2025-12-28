@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { API } from 'aws-amplify';
-import type { ImportProgress, ImportResult, Feature, Project, Tree } from '../types/koboToolbox';
+import type { ImportProgress, ImportResult, Feature, Project } from '../types/koboToolbox';
 import { fetchData, downloadAudioFile, isAudioColumn } from '../services/koboToolboxApi';
 import { uploadAudioFile, blobToFile } from '../services/storageService';
 
@@ -372,8 +372,10 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
 
       result.success = true;
     } catch (err: any) {
-      const errorMessage = err.message || 'Import failed';
-      setError(errorMessage);
+      console.error('Import error:', err);
+      const errorMessage = err.message || err.toString() || 'Import failed';
+      const fullError = err.stack ? `${errorMessage}\n\nStack: ${err.stack}` : errorMessage;
+      setError(fullError);
       updateProgress({
         stage: 'error',
         message: `Error: ${errorMessage}`,

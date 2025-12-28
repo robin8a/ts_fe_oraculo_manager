@@ -107,7 +107,13 @@ export const KoboToolboxImport: React.FC = () => {
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
           <p className="text-red-800 font-medium">Error</p>
-          <p className="text-red-600 mt-1">{error}</p>
+          <p className="text-red-600 mt-1 whitespace-pre-wrap">{error}</p>
+          <details className="mt-2">
+            <summary className="text-sm text-red-700 cursor-pointer">Show technical details</summary>
+            <pre className="mt-2 text-xs bg-red-100 p-2 rounded overflow-auto max-h-40">
+              {JSON.stringify({ error, progress }, null, 2)}
+            </pre>
+          </details>
         </div>
       )}
 
@@ -139,9 +145,9 @@ export const KoboToolboxImport: React.FC = () => {
           <p className="text-yellow-800 font-medium">Import Completed with Errors</p>
           <div className="mt-2 text-sm text-yellow-700">
             {importResult.errors.length > 0 && (
-              <ul className="list-disc list-inside">
+              <ul className="list-disc list-inside space-y-1">
                 {importResult.errors.map((err, idx) => (
-                  <li key={idx}>{err}</li>
+                  <li key={idx} className="whitespace-pre-wrap">{err}</li>
                 ))}
               </ul>
             )}

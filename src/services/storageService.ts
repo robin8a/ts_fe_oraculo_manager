@@ -18,7 +18,7 @@ export async function uploadAudioFile(
     const key = `public/audio/${treeId}/${sanitizedFeatureName}/${fileName}`;
 
     // Upload to S3 using Storage.put (Amplify v5 API)
-    const result = await Storage.put(key, file, {
+    await Storage.put(key, file, {
       contentType: file instanceof File ? file.type : 'audio/mpeg',
       level: 'public', // Use public level since bucket allows guest READ
     });

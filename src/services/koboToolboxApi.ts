@@ -22,31 +22,51 @@ export async function fetchData(
       },
     });
 
+    console.log('Lambda response:', response);
+
+    // Check if response has error
     if (response.error) {
       throw new Error(response.error);
     }
 
-    // Handle response
-    const data = typeof response === 'string' ? JSON.parse(response) : response;
-    
+    // Lambda returns the body directly or wrapped
+    let responseBody = response;
+    if (response.body) {
+      responseBody = typeof response.body === 'string' ? JSON.parse(response.body) : response.body;
+    } else if (typeof response === 'string') {
+      try {
+        responseBody = JSON.parse(response);
+      } catch {
+        // If not JSON, treat as text (CSV)
+        responseBody = response;
+      }
+    }
+
+    // Handle response based on format
     if (format === 'json') {
-      return Array.isArray(data) ? data : data.results || [];
+      const data = Array.isArray(responseBody) ? responseBody : responseBody.results || responseBody;
+      return Array.isArray(data) ? data : [];
     } else {
-      const csvText = typeof response === 'string' ? response : JSON.stringify(response);
+      // CSV format
+      const csvText = typeof responseBody === 'string' ? responseBody : JSON.stringify(responseBody);
       return parseCSV(csvText);
     }
   } catch (lambdaError: any) {
+    console.error('Lambda proxy error:', lambdaError);
+    
     // If Lambda function is not available, try direct request
     if (lambdaError.message && (
       lambdaError.message.includes('kobotoolboxProxy') ||
       lambdaError.message.includes('not found') ||
-      lambdaError.code === 'NotFound'
+      lambdaError.message.includes('does not exist') ||
+      lambdaError.code === 'NotFound' ||
+      lambdaError.code === 'ResourceNotFoundException'
     )) {
       console.warn('Lambda proxy not available, trying direct request (may fail due to CORS)');
       return fetchDataDirect(serverUrl, apiKey, projectUid, format);
     }
-    // If it's a different error from Lambda, throw it
-    throw lambdaError;
+    // If it's a different error from Lambda, throw it with more context
+    throw new Error(`Lambda proxy error: ${lambdaError.message || JSON.stringify(lambdaError)}`);
   }
 }
 
