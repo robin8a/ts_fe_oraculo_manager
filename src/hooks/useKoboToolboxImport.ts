@@ -3,78 +3,8 @@ import { API } from 'aws-amplify';
 import type { ImportProgress, ImportResult, Feature, Project } from '../types/koboToolbox';
 import { fetchData, downloadAudioFile, isAudioColumn } from '../services/koboToolboxApi';
 import { uploadAudioFile, blobToFile } from '../services/storageService';
-
-// GraphQL Queries
-const LIST_PROJECTS = `
-  query ListProjects {
-    listProjects {
-      items {
-        id
-        name
-        status
-      }
-    }
-  }
-`;
-
-const LIST_FEATURES = `
-  query ListFeatures {
-    listFeatures {
-      items {
-        id
-        name
-        feature_type
-        is_float
-      }
-    }
-  }
-`;
-
-// GraphQL Mutations
-const CREATE_PROJECT = `
-  mutation CreateProject($input: CreateProjectInput!) {
-    createProject(input: $input) {
-      id
-      name
-      status
-    }
-  }
-`;
-
-const CREATE_FEATURE = `
-  mutation CreateFeature($input: CreateFeatureInput!) {
-    createFeature(input: $input) {
-      id
-      name
-      feature_type
-      is_float
-    }
-  }
-`;
-
-const CREATE_TREE = `
-  mutation CreateTree($input: CreateTreeInput!) {
-    createTree(input: $input) {
-      id
-      name
-      status
-      projectId
-    }
-  }
-`;
-
-const CREATE_RAW_DATA = `
-  mutation CreateRawData($input: CreateRawDataInput!) {
-    createRawData(input: $input) {
-      id
-      name
-      valueFloat
-      valueString
-      featureId
-      treeId
-    }
-  }
-`;
+import { listProjects, listFeatures } from '../graphql/queries';
+import { createProject, createFeature, createTree, createRawData } from '../graphql/mutations';
 
 export interface UseKoboToolboxImportResult {
   importData: (config: {
@@ -103,7 +33,7 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
   const findOrCreateProject = useCallback(async (projectName: string): Promise<string> => {
     try {
       // Try to find existing project
-      const listResponse: any = await API.graphql({ query: LIST_PROJECTS });
+      const listResponse: any = await API.graphql({ query: listProjects });
       const projects = listResponse.data?.listProjects?.items || [];
       const existingProject = projects.find((p: Project) => p.name === projectName);
 
@@ -115,7 +45,7 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
       // Create new project
       updateProgress({ message: `Creating project: ${projectName}` });
       const createResponse: any = await API.graphql({
-        query: CREATE_PROJECT,
+        query: createProject,
         variables: {
           input: {
             name: projectName,
@@ -136,7 +66,7 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
   ): Promise<{ id: string; created: boolean }> => {
     try {
       // Try to find existing feature
-      const listResponse: any = await API.graphql({ query: LIST_FEATURES });
+      const listResponse: any = await API.graphql({ query: listFeatures });
       const features = listResponse.data?.listFeatures?.items || [];
       const existingFeature = features.find((f: Feature) => f.name === featureName);
 
@@ -146,7 +76,7 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
 
       // Create new feature
       const createResponse: any = await API.graphql({
-        query: CREATE_FEATURE,
+        query: createFeature,
         variables: {
           input: {
             name: featureName,
@@ -191,6 +121,9 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
         stage: 'fetching',
         message: 'Fetching data from KoboToolbox...',
         progress: 0,
+        currentStep: 'Fetching data',
+        stepNumber: 1,
+        totalSteps: 5,
       });
 
       const rows = await fetchData(
@@ -209,9 +142,21 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
         message: `Parsed ${rows.length} rows`,
         totalRows: rows.length,
         progress: 10,
+        currentStep: 'Parsing data',
+        stepNumber: 1,
+        totalSteps: 5,
       });
 
       // Step 2: Find or create project
+      updateProgress({
+        stage: 'processing',
+        message: 'Finding or creating project...',
+        progress: 15,
+        currentStep: 'Setting up project',
+        stepNumber: 2,
+        totalSteps: 5,
+      });
+      
       const projectId = await findOrCreateProject('Levantamiento Info Parcelas');
       result.projectId = projectId;
 
@@ -223,15 +168,33 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
 
       updateProgress({
         stage: 'processing',
-        message: 'Processing features and trees...',
+        message: `Processing ${columnNames.length} features...`,
         progress: 20,
+        currentStep: 'Creating features',
+        stepNumber: 3,
+        totalSteps: 5,
+        totalFeatures: columnNames.length,
+        featuresProcessed: 0,
       });
 
       // Step 4: Create or find features for each column
       const featureMap = new Map<string, string>();
       const featureIsFloatMap = new Map<string, boolean>();
 
-      for (const columnName of columnNames) {
+      for (let featureIndex = 0; featureIndex < columnNames.length; featureIndex++) {
+        const columnName = columnNames[featureIndex];
+        
+        updateProgress({
+          stage: 'processing',
+          message: `Processing feature ${featureIndex + 1} of ${columnNames.length}: ${columnName}`,
+          progress: 20 + (featureIndex / columnNames.length) * 10,
+          currentStep: 'Creating features',
+          stepNumber: 3,
+          totalSteps: 5,
+          currentFeature: columnName,
+          featuresProcessed: featureIndex,
+          totalFeatures: columnNames.length,
+        });
         // Determine if this column is numeric by checking sample values
         let isFloat = false;
         for (const row of rows.slice(0, 10)) { // Check first 10 rows
@@ -252,33 +215,62 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
           } else {
             result.featuresSkipped++;
           }
+          
+          updateProgress({
+            stage: 'processing',
+            message: `Processed feature ${featureIndex + 1} of ${columnNames.length}: ${columnName}`,
+            progress: 20 + ((featureIndex + 1) / columnNames.length) * 10,
+            currentStep: 'Creating features',
+            stepNumber: 3,
+            totalSteps: 5,
+            featuresProcessed: featureIndex + 1,
+            totalFeatures: columnNames.length,
+          });
         } catch (err: any) {
           result.errors.push(`Failed to create feature ${columnName}: ${err.message}`);
         }
       }
 
       // Step 5: Process each row (create Tree and RawData entries)
+      updateProgress({
+        stage: 'processing',
+        message: `Starting to process ${rows.length} rows...`,
+        progress: 30,
+        currentStep: 'Processing rows',
+        stepNumber: 4,
+        totalSteps: 5,
+        treesProcessed: 0,
+        rawDataProcessed: 0,
+        audioFilesProcessed: 0,
+      });
+
       for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
         const row = rows[rowIndex];
         
         updateProgress({
           stage: 'processing',
-          message: `Processing row ${rowIndex + 1} of ${rows.length}...`,
+          message: `Processing row ${rowIndex + 1} of ${rows.length} (Tree ${rowIndex + 1})...`,
           currentRow: rowIndex + 1,
           totalRows: rows.length,
-          progress: 20 + (rowIndex / rows.length) * 60,
+          progress: 30 + (rowIndex / rows.length) * 60,
+          currentStep: 'Processing rows',
+          stepNumber: 4,
+          totalSteps: 5,
+          treesProcessed: result.treesCreated,
+          rawDataProcessed: result.rawDataCreated,
+          audioFilesProcessed: result.audioFilesUploaded,
         });
 
         try {
           // Create Tree for this row
           const treeName = `Tree ${rowIndex + 1}`;
           const treeResponse: any = await API.graphql({
-            query: CREATE_TREE,
+            query: createTree,
             variables: {
               input: {
                 name: treeName,
                 status: 'active',
-                projectId: projectId,
+                projectTreesId: projectId,
               },
             },
           });
@@ -314,7 +306,12 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
 
                 // Upload to S3
                 updateProgress({
-                  message: `Uploading audio to S3...`,
+                  stage: 'uploading',
+                  message: `Uploading audio file ${result.audioFilesUploaded + 1} to S3...`,
+                  currentStep: 'Uploading audio',
+                  stepNumber: 5,
+                  totalSteps: 5,
+                  audioFilesProcessed: result.audioFilesUploaded,
                 });
 
                 const s3Url = await uploadAudioFile(audioFile, treeId, columnName);
@@ -322,13 +319,13 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
 
                 // Create RawData with S3 URL
                 await API.graphql({
-                  query: CREATE_RAW_DATA,
+                  query: createRawData,
                   variables: {
                     input: {
                       name: columnName,
                       valueString: s3Url,
-                      featureId: featureId,
-                      treeId: treeId,
+                      treeRawDataId: treeId,
+                      featureRawDatasId: featureId,
                     },
                   },
                 });
@@ -341,14 +338,14 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
               // Create RawData entry with value
               try {
                 await API.graphql({
-                  query: CREATE_RAW_DATA,
+                  query: createRawData,
                   variables: {
                     input: {
                       name: columnName,
                       valueFloat: isFloat && isNumeric(value) ? Number(value) : undefined,
                       valueString: !isFloat || !isNumeric(value) ? String(value) : undefined,
-                      featureId: featureId,
-                      treeId: treeId,
+                      treeRawDataId: treeId,
+                      featureRawDatasId: featureId,
                     },
                   },
                 });

@@ -12,6 +12,7 @@ export async function fetchData(
   format: 'json' | 'csv'
 ): Promise<KoboToolboxRow[]> {
   // Try Lambda function first (if deployed)
+  // Note: Lambda function must be deployed and configured as REST API
   try {
     const response = await API.post('kobotoolboxProxy', '/', {
       body: {
@@ -52,21 +53,11 @@ export async function fetchData(
       return parseCSV(csvText);
     }
   } catch (lambdaError: any) {
-    console.error('Lambda proxy error:', lambdaError);
+    console.warn('Lambda proxy not available:', lambdaError.message);
     
     // If Lambda function is not available, try direct request
-    if (lambdaError.message && (
-      lambdaError.message.includes('kobotoolboxProxy') ||
-      lambdaError.message.includes('not found') ||
-      lambdaError.message.includes('does not exist') ||
-      lambdaError.code === 'NotFound' ||
-      lambdaError.code === 'ResourceNotFoundException'
-    )) {
-      console.warn('Lambda proxy not available, trying direct request (may fail due to CORS)');
-      return fetchDataDirect(serverUrl, apiKey, projectUid, format);
-    }
-    // If it's a different error from Lambda, throw it with more context
-    throw new Error(`Lambda proxy error: ${lambdaError.message || JSON.stringify(lambdaError)}`);
+    // This will work if CORS extension is enabled, otherwise will show CORS error
+    return fetchDataDirect(serverUrl, apiKey, projectUid, format);
   }
 }
 
@@ -164,12 +155,16 @@ export async function downloadAudioFile(
     if (lambdaError.message && (
       lambdaError.message.includes('kobotoolboxProxy') ||
       lambdaError.message.includes('not found') ||
-      lambdaError.code === 'NotFound'
+      lambdaError.message.includes('does not exist') ||
+      lambdaError.code === 'NotFound' ||
+      lambdaError.code === 'ResourceNotFoundException'
     )) {
       console.warn('Lambda proxy not available, trying direct request (may fail due to CORS)');
       return downloadAudioFileDirect(downloadUrl, apiKey);
     }
-    throw new Error(`Error downloading audio file: ${lambdaError.message}`);
+    // Fall back to direct request on any error
+    console.warn('Lambda proxy failed, falling back to direct request');
+    return downloadAudioFileDirect(downloadUrl, apiKey);
   }
 }
 

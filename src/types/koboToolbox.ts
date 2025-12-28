@@ -24,6 +24,14 @@ export interface ImportProgress {
   totalRows?: number;
   currentFeature?: string;
   progress?: number; // 0-100
+  currentStep?: string;
+  stepNumber?: number;
+  totalSteps?: number;
+  featuresProcessed?: number;
+  totalFeatures?: number;
+  treesProcessed?: number;
+  rawDataProcessed?: number;
+  audioFilesProcessed?: number;
 }
 
 export interface ImportResult {

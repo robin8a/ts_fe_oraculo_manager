@@ -158,26 +158,89 @@ export const KoboToolboxImport: React.FC = () => {
       {/* Progress Indicator */}
       {loading && (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-          <div className="mb-2 flex justify-between items-center">
-            <span className="text-sm font-medium text-gray-700">{progress.message}</span>
-            <span className="text-sm text-gray-500">{getProgressPercentage()}%</span>
+          <div className="mb-4">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-sm font-medium text-gray-700">{progress.message}</span>
+              <span className="text-sm font-semibold text-primary-600">{getProgressPercentage()}%</span>
+            </div>
+            
+            {/* Step indicator */}
+            {progress.stepNumber && progress.totalSteps && (
+              <div className="mb-3">
+                <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
+                  <span>Step {progress.stepNumber} of {progress.totalSteps}</span>
+                  <span>{progress.currentStep}</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-1.5">
+                  <div
+                    className="bg-primary-500 h-1.5 rounded-full transition-all duration-300"
+                    style={{ width: `${(progress.stepNumber / progress.totalSteps) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
+            
+            {/* Main progress bar */}
+            <div className="w-full bg-gray-200 rounded-full h-3">
+              <div
+                className="bg-primary-600 h-3 rounded-full transition-all duration-300 flex items-center justify-end pr-1"
+                style={{ width: `${getProgressPercentage()}%` }}
+              >
+                {getProgressPercentage() > 10 && (
+                  <span className="text-xs text-white font-medium">{Math.round(getProgressPercentage())}%</span>
+                )}
+              </div>
+            </div>
           </div>
-          <div className="w-full bg-gray-200 rounded-full h-2.5">
-            <div
-              className="bg-primary-600 h-2.5 rounded-full transition-all duration-300"
-              style={{ width: `${getProgressPercentage()}%` }}
-            />
+
+          {/* Detailed progress info */}
+          <div className="mt-4 space-y-2 text-sm">
+            {progress.currentRow && progress.totalRows && (
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600">Rows processed:</span>
+                <span className="font-medium text-gray-900">
+                  {progress.currentRow} / {progress.totalRows}
+                </span>
+              </div>
+            )}
+            
+            {progress.featuresProcessed !== undefined && progress.totalFeatures && (
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600">Features processed:</span>
+                <span className="font-medium text-gray-900">
+                  {progress.featuresProcessed} / {progress.totalFeatures}
+                </span>
+              </div>
+            )}
+            
+            {progress.currentFeature && (
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600">Current feature:</span>
+                <span className="font-medium text-gray-900">{progress.currentFeature}</span>
+              </div>
+            )}
+            
+            {progress.treesProcessed !== undefined && (
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600">Trees created:</span>
+                <span className="font-medium text-green-600">{progress.treesProcessed}</span>
+              </div>
+            )}
+            
+            {progress.rawDataProcessed !== undefined && (
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600">RawData entries:</span>
+                <span className="font-medium text-green-600">{progress.rawDataProcessed}</span>
+              </div>
+            )}
+            
+            {progress.audioFilesProcessed !== undefined && progress.audioFilesProcessed > 0 && (
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600">Audio files uploaded:</span>
+                <span className="font-medium text-green-600">{progress.audioFilesProcessed}</span>
+              </div>
+            )}
           </div>
-          {progress.currentRow && progress.totalRows && (
-            <p className="mt-2 text-sm text-gray-500">
-              Processing row {progress.currentRow} of {progress.totalRows}
-            </p>
-          )}
-          {progress.currentFeature && (
-            <p className="mt-1 text-sm text-gray-500">
-              Current feature: {progress.currentFeature}
-            </p>
-          )}
         </div>
       )}
 
