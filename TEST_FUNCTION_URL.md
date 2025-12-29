@@ -7,14 +7,7 @@ The Function URL is working (tested with curl), but the browser is getting "Fail
 Open your browser console (F12) and run:
 
 ```javascript
-fetch('https://ah5rtowwsvsmrnosm7rgjrejjm0redcf.lambda-url.us-east-1.on.aws/', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ test: 'data' })
-})
-.then(r => r.text())
-.then(console.log)
-.catch(console.error);
+
 ```
 
 This will show you the exact error.
@@ -40,7 +33,14 @@ This will show you the exact error.
 aws lambda update-function-url-config \
   --function-name kobotoolboxProxy-dev \
   --cors '{"AllowOrigins":["*"],"AllowMethods":["POST","OPTIONS"],"AllowHeaders":["Content-Type","Authorization","X-Requested-With"],"MaxAge":86400}'
+
+aws lambda update-function-url-config \
+    --function-name kobotoolboxProxy-dev \
+    --cors file://cors-config-no-options.json \
+    --profile 879381245127_AdministratorAccess
+
 ```
+
 
 ## Verify Function URL Status
 
