@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   Bars3Icon, 
   XMarkIcon,
@@ -7,7 +7,10 @@ import {
   ListBulletIcon,
   PlusCircleIcon,
   CloudArrowDownIcon,
+  ArrowRightOnRectangleIcon,
+  UserCircleIcon,
 } from '@heroicons/react/24/outline';
+import { useAuth } from '../hooks/useAuth';
 
 interface NavItem {
   name: string;
@@ -36,9 +39,24 @@ const navigation: NavItem[] = [
 export const Sidebar: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, signOut } = useAuth();
+  const [signingOut, setSigningOut] = useState(false);
 
   const isActive = (href: string) => {
     return location.pathname === href || location.pathname.startsWith(href + '/');
+  };
+
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    try {
+      await signOut();
+      navigate('/login');
+    } catch (error) {
+      console.error('Error signing out:', error);
+    } finally {
+      setSigningOut(false);
+    }
   };
 
   return (
@@ -134,6 +152,29 @@ export const Sidebar: React.FC = () => {
               </div>
             ))}
           </nav>
+
+          {/* User Section */}
+          <div className="border-t border-gray-200 p-4">
+            <div className="flex items-center mb-3">
+              <UserCircleIcon className="h-8 w-8 text-gray-400 mr-2" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900 truncate">
+                  {user?.username || 'User'}
+                </p>
+                <p className="text-xs text-gray-500 truncate">
+                  {user?.signInDetails?.loginId || 'Authenticated'}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleSignOut}
+              disabled={signingOut}
+              className="w-full flex items-center justify-center px-3 py-2 text-sm font-medium text-red-600 bg-red-50 rounded-md hover:bg-red-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ArrowRightOnRectangleIcon className="h-4 w-4 mr-2" />
+              {signingOut ? 'Signing out...' : 'Sign Out'}
+            </button>
+          </div>
         </div>
       </div>
     </>
