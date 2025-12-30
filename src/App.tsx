@@ -7,6 +7,7 @@ import { ModelAIEdit } from './pages/ModelAI/ModelAIEdit';
 import { ModelAIDetail } from './pages/ModelAI/ModelAIDetail';
 import { KoboToolboxImport } from './pages/KoboToolboxImport/KoboToolboxImport';
 import { Login } from './pages/Login/Login';
+import { ProjectTreeFeatureView } from './pages/ProjectTreeFeature/ProjectTreeFeatureView';
 import { useAuth } from './hooks/useAuth';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -71,6 +72,7 @@ function App() {
                   <Route path="/modelai/:id" element={<ModelAIDetail />} />
                   <Route path="/modelai/:id/edit" element={<ModelAIEdit />} />
                   <Route path="/kobotoolbox/import" element={<KoboToolboxImport />} />
+                  <Route path="/projects" element={<ProjectTreeFeatureView />} />
                 </Routes>
               </Layout>
             </ProtectedRoute>

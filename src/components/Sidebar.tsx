@@ -9,6 +9,7 @@ import {
   CloudArrowDownIcon,
   ArrowRightOnRectangleIcon,
   UserCircleIcon,
+  FolderIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../hooks/useAuth';
 
@@ -28,6 +29,11 @@ const navigation: NavItem[] = [
       { name: 'List', href: '/modelai', icon: ListBulletIcon },
       { name: 'Create', href: '/modelai/create', icon: PlusCircleIcon },
     ],
+  },
+  {
+    name: 'Projects & Trees',
+    href: '/projects',
+    icon: FolderIcon,
   },
   {
     name: 'KoboToolbox Import',
@@ -162,7 +168,7 @@ export const Sidebar: React.FC = () => {
                   {user?.username || 'User'}
                 </p>
                 <p className="text-xs text-gray-500 truncate">
-                  {user?.signInDetails?.loginId || 'Authenticated'}
+                  {user?.attributes?.email || 'Authenticated'}
                 </p>
               </div>
             </div>
