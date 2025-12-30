@@ -10,6 +10,7 @@ import {
   ArrowRightOnRectangleIcon,
   UserCircleIcon,
   FolderIcon,
+  TrashIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../hooks/useAuth';
 
@@ -34,6 +35,11 @@ const navigation: NavItem[] = [
     name: 'Projects & Trees',
     href: '/projects',
     icon: FolderIcon,
+  },
+  {
+    name: 'Delete Projects/Trees/Features',
+    href: '/projects/delete',
+    icon: TrashIcon,
   },
   {
     name: 'KoboToolbox Import',
