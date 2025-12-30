@@ -1,13 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { API } from 'aws-amplify';
-import { useProjectTreeFeature } from '../../hooks/useProjectTreeFeature';
 import { 
   deleteProject, 
   deleteTree, 
   deleteFeature, 
   deleteRawData 
 } from '../../graphql/mutations';
-import { listTrees, listRawData } from '../../graphql/queries';
+import { listProjects, listTrees, listRawData, listFeatures } from '../../graphql/queries';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import {
@@ -20,6 +19,45 @@ import {
   XCircleIcon,
 } from '@heroicons/react/24/outline';
 import type { ProjectWithTrees, TreeWithFeatures, FeatureInfo } from '../../types/projectTreeFeature';
+
+// Helper function to fetch all items with pagination
+const fetchAllWithPagination = async <T,>(
+  query: any,
+  variables: any = {},
+  extractItems: (response: any) => T[],
+  getNextToken: (response: any) => string | null = (response) => {
+    // Try to find nextToken in the response data
+    const data = response.data || {};
+    const firstKey = Object.keys(data)[0];
+    return data[firstKey]?.nextToken || null;
+  }
+): Promise<T[]> => {
+  const allItems: T[] = [];
+  let nextToken: string | null = null;
+
+  do {
+    try {
+      const response: any = await API.graphql({
+        query,
+        variables: {
+          ...variables,
+          limit: 1000, // Maximum items per page
+          nextToken,
+        },
+      });
+
+      const items = extractItems(response);
+      allItems.push(...items);
+
+      nextToken = getNextToken(response);
+    } catch (err) {
+      console.error('Error in pagination:', err);
+      break;
+    }
+  } while (nextToken);
+
+  return allItems;
+};
 
 type DeleteType = 'project' | 'tree' | 'feature';
 
@@ -35,7 +73,11 @@ interface DeleteItem {
 }
 
 export const DeleteProjectTreeFeature: React.FC = () => {
-  const { projects, loading, error, refetch } = useProjectTreeFeature();
+  const [allProjects, setAllProjects] = useState<ProjectWithTrees[]>([]);
+  const [allTrees, setAllTrees] = useState<TreeWithFeatures[]>([]);
+  const [allFeatures, setAllFeatures] = useState<FeatureInfo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<DeleteItem | null>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -43,6 +85,142 @@ export const DeleteProjectTreeFeature: React.FC = () => {
     type: 'success' | 'error' | null;
     message: string;
   }>({ type: null, message: '' });
+
+  // Fetch all data with pagination
+  const fetchAllData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Fetch all projects with pagination
+      const projects = await fetchAllWithPagination(
+        listProjects,
+        {},
+        (response) => response.data?.listProjects?.items || []
+      );
+
+      // Fetch all features with pagination
+      const features = await fetchAllWithPagination(
+        listFeatures,
+        {},
+        (response) => response.data?.listFeatures?.items || []
+      );
+
+      // Create features map
+      const featuresMap = new Map<string, FeatureInfo>();
+      features.forEach((feature: any) => {
+        featuresMap.set(feature.id, {
+          id: feature.id,
+          name: feature.name || '',
+          feature_type: feature.feature_type || null,
+          feature_group: feature.feature_group || null,
+          description: feature.description || null,
+          default_value: feature.default_value || null,
+          is_float: feature.is_float || null,
+        });
+      });
+
+      // Fetch all trees with pagination for each project
+      const projectsWithTrees: ProjectWithTrees[] = await Promise.all(
+        projects.map(async (project: any) => {
+          const trees = await fetchAllWithPagination(
+            listTrees,
+            {
+              filter: { projectTreesId: { eq: project.id } },
+            },
+            (response) => response.data?.listTrees?.items || []
+          );
+
+          // For each tree, fetch raw data and extract features
+          const treesWithFeatures: TreeWithFeatures[] = await Promise.all(
+            trees.map(async (tree: any) => {
+              const rawDataItems = await fetchAllWithPagination(
+                listRawData,
+                {
+                  filter: { treeRawDataId: { eq: tree.id } },
+                },
+                (response) => response.data?.listRawData?.items || []
+              );
+
+              // Extract unique features from raw data
+              const featureMap = new Map<string, FeatureInfo>();
+              rawDataItems.forEach((rawData: any) => {
+                if (rawData.featureRawDatasId && featuresMap.has(rawData.featureRawDatasId)) {
+                  const featureId = rawData.featureRawDatasId;
+                  if (!featureMap.has(featureId)) {
+                    featureMap.set(featureId, featuresMap.get(featureId)!);
+                  }
+                }
+              });
+
+              return {
+                id: tree.id,
+                name: tree.name,
+                status: tree.status || null,
+                projectTreesId: tree.projectTreesId || null,
+                templateTreesId: tree.templateTreesId || null,
+                createdAt: tree.createdAt || null,
+                updatedAt: tree.updatedAt || null,
+                features: Array.from(featureMap.values()),
+              };
+            })
+          );
+
+          return {
+            id: project.id,
+            name: project.name,
+            status: project.status,
+            createdAt: project.createdAt || null,
+            updatedAt: project.updatedAt || null,
+            trees: treesWithFeatures,
+          };
+        })
+      );
+
+      setAllProjects(projectsWithTrees);
+      
+      // Flatten all trees for the trees section (with project reference)
+      const flattenedTrees: (TreeWithFeatures & { projectId: string; projectName: string })[] = [];
+      projectsWithTrees.forEach((project) => {
+        project.trees.forEach((tree) => {
+          flattenedTrees.push({
+            ...tree,
+            projectId: project.id,
+            projectName: project.name,
+          });
+        });
+      });
+      setAllTrees(flattenedTrees as any);
+
+      // Collect all unique features
+      const uniqueFeatures = new Map<string, FeatureInfo>();
+      projectsWithTrees.forEach((project) => {
+        project.trees.forEach((tree) => {
+          tree.features.forEach((feature) => {
+            if (!uniqueFeatures.has(feature.id)) {
+              uniqueFeatures.set(feature.id, feature);
+            }
+          });
+        });
+      });
+      setAllFeatures(Array.from(uniqueFeatures.values()));
+    } catch (err: any) {
+      const errorMessage =
+        err?.errors?.[0]?.message || err?.message || 'Failed to fetch data';
+      setError(errorMessage);
+      console.error('Error fetching data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAllData();
+  }, []);
+
+  const refetch = async () => {
+    await fetchAllData();
+  };
 
   const handleDeleteClick = async (type: DeleteType, item: ProjectWithTrees | TreeWithFeatures | FeatureInfo) => {
     let deleteItem: DeleteItem;
@@ -63,13 +241,14 @@ export const DeleteProjectTreeFeature: React.FC = () => {
       let totalRawData = 0;
       for (const tree of project.trees) {
         try {
-          const rawDataResponse: any = await API.graphql({
-            query: listRawData,
-            variables: {
+          const rawDataItems = await fetchAllWithPagination(
+            listRawData,
+            {
               filter: { treeRawDataId: { eq: tree.id } },
             },
-          });
-          totalRawData += rawDataResponse.data?.listRawData?.items?.length || 0;
+            (response) => response.data?.listRawData?.items || []
+          );
+          totalRawData += rawDataItems.length;
         } catch (err) {
           console.error('Error fetching raw data:', err);
         }
@@ -88,13 +267,14 @@ export const DeleteProjectTreeFeature: React.FC = () => {
 
       // Calculate RawData count for this tree
       try {
-        const rawDataResponse: any = await API.graphql({
-          query: listRawData,
-          variables: {
+        const rawDataItems = await fetchAllWithPagination(
+          listRawData,
+          {
             filter: { treeRawDataId: { eq: tree.id } },
           },
-        });
-        deleteItem.cascadeCount!.rawData = rawDataResponse.data?.listRawData?.items?.length || 0;
+          (response) => response.data?.listRawData?.items || []
+        );
+        deleteItem.cascadeCount!.rawData = rawDataItems.length;
       } catch (err) {
         console.error('Error fetching raw data:', err);
       }
@@ -111,13 +291,14 @@ export const DeleteProjectTreeFeature: React.FC = () => {
 
       // Calculate RawData count for this feature
       try {
-        const rawDataResponse: any = await API.graphql({
-          query: listRawData,
-          variables: {
+        const rawDataItems = await fetchAllWithPagination(
+          listRawData,
+          {
             filter: { featureRawDatasId: { eq: feature.id } },
           },
-        });
-        deleteItem.cascadeCount!.rawData = rawDataResponse.data?.listRawData?.items?.length || 0;
+          (response) => response.data?.listRawData?.items || []
+        );
+        deleteItem.cascadeCount!.rawData = rawDataItems.length;
       } catch (err) {
         console.error('Error fetching raw data:', err);
       }
@@ -136,26 +317,24 @@ export const DeleteProjectTreeFeature: React.FC = () => {
     try {
       if (selectedItem.type === 'project') {
         // Cascade delete: Project -> Trees -> RawData
-        // First, get all trees in the project
-        const treesResponse: any = await API.graphql({
-          query: listTrees,
-          variables: {
+        // First, get all trees in the project with pagination
+        const trees = await fetchAllWithPagination(
+          listTrees,
+          {
             filter: { projectTreesId: { eq: selectedItem.id } },
           },
-        });
-
-        const trees = treesResponse.data?.listTrees?.items || [];
+          (response) => response.data?.listTrees?.items || []
+        );
 
         // Delete all RawData for all trees
         for (const tree of trees) {
-          const rawDataResponse: any = await API.graphql({
-            query: listRawData,
-            variables: {
+          const rawDataItems = await fetchAllWithPagination(
+            listRawData,
+            {
               filter: { treeRawDataId: { eq: tree.id } },
             },
-          });
-
-          const rawDataItems = rawDataResponse.data?.listRawData?.items || [];
+            (response) => response.data?.listRawData?.items || []
+          );
           for (const rawData of rawDataItems) {
             await API.graphql({
               query: deleteRawData,
@@ -183,15 +362,14 @@ export const DeleteProjectTreeFeature: React.FC = () => {
         });
       } else if (selectedItem.type === 'tree') {
         // Cascade delete: Tree -> RawData
-        // First, get all RawData for this tree
-        const rawDataResponse: any = await API.graphql({
-          query: listRawData,
-          variables: {
+        // First, get all RawData for this tree with pagination
+        const rawDataItems = await fetchAllWithPagination(
+          listRawData,
+          {
             filter: { treeRawDataId: { eq: selectedItem.id } },
           },
-        });
-
-        const rawDataItems = rawDataResponse.data?.listRawData?.items || [];
+          (response) => response.data?.listRawData?.items || []
+        );
         for (const rawData of rawDataItems) {
           await API.graphql({
             query: deleteRawData,
@@ -210,15 +388,14 @@ export const DeleteProjectTreeFeature: React.FC = () => {
         });
       } else if (selectedItem.type === 'feature') {
         // Cascade delete: Feature -> RawData
-        // First, get all RawData for this feature
-        const rawDataResponse: any = await API.graphql({
-          query: listRawData,
-          variables: {
+        // First, get all RawData for this feature with pagination
+        const rawDataItems = await fetchAllWithPagination(
+          listRawData,
+          {
             filter: { featureRawDatasId: { eq: selectedItem.id } },
           },
-        });
-
-        const rawDataItems = rawDataResponse.data?.listRawData?.items || [];
+          (response) => response.data?.listRawData?.items || []
+        );
         for (const rawData of rawDataItems) {
           await API.graphql({
             query: deleteRawData,
@@ -271,17 +448,6 @@ export const DeleteProjectTreeFeature: React.FC = () => {
     }
   };
 
-  // Collect all features from all projects/trees
-  const allFeatures = new Map<string, FeatureInfo>();
-  projects.forEach((project) => {
-    project.trees.forEach((tree) => {
-      tree.features.forEach((feature) => {
-        if (!allFeatures.has(feature.id)) {
-          allFeatures.set(feature.id, feature);
-        }
-      });
-    });
-  });
 
   return (
     <div className="space-y-6">
@@ -327,11 +493,11 @@ export const DeleteProjectTreeFeature: React.FC = () => {
               <FolderIcon className="h-6 w-6 text-blue-500 mr-2" />
               Projects
             </h2>
-            {projects.length === 0 ? (
+            {allProjects.length === 0 ? (
               <p className="text-gray-500 text-sm">No projects found</p>
             ) : (
               <div className="space-y-2">
-                {projects.map((project) => (
+                {allProjects.map((project) => (
                   <div
                     key={project.id}
                     className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
@@ -362,12 +528,13 @@ export const DeleteProjectTreeFeature: React.FC = () => {
               <DocumentIcon className="h-6 w-6 text-green-500 mr-2" />
               Trees
             </h2>
-            {projects.reduce((acc, p) => acc + p.trees.length, 0) === 0 ? (
+            {allTrees.length === 0 ? (
               <p className="text-gray-500 text-sm">No trees found</p>
             ) : (
               <div className="space-y-2">
-                {projects.map((project) =>
-                  project.trees.map((tree) => (
+                {allTrees.map((tree) => {
+                  const project = allProjects.find(p => p.id === (tree as any).projectId);
+                  return (
                     <div
                       key={tree.id}
                       className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
@@ -375,7 +542,7 @@ export const DeleteProjectTreeFeature: React.FC = () => {
                       <div className="flex-1">
                         <div className="font-medium text-gray-900">{tree.name}</div>
                         <div className="text-sm text-gray-500">
-                          Project: {project.name} • {tree.features.length} {tree.features.length === 1 ? 'feature' : 'features'}
+                          Project: {project?.name || 'Unknown'} • {tree.features.length} {tree.features.length === 1 ? 'feature' : 'features'}
                         </div>
                       </div>
                       <Button
@@ -387,8 +554,8 @@ export const DeleteProjectTreeFeature: React.FC = () => {
                         Delete
                       </Button>
                     </div>
-                  ))
-                )}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -399,11 +566,11 @@ export const DeleteProjectTreeFeature: React.FC = () => {
               <CubeIcon className="h-6 w-6 text-purple-500 mr-2" />
               Features
             </h2>
-            {allFeatures.size === 0 ? (
+            {allFeatures.length === 0 ? (
               <p className="text-gray-500 text-sm">No features found</p>
             ) : (
               <div className="space-y-2">
-                {Array.from(allFeatures.values()).map((feature) => (
+                {allFeatures.map((feature) => (
                   <div
                     key={feature.id}
                     className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
