@@ -22,7 +22,9 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      'aws-amplify/api': '@aws-amplify/api'
+      'aws-amplify/api': '@aws-amplify/api',
+      'aws-amplify/auth': '@aws-amplify/auth',
+      'aws-amplify/storage': '@aws-amplify/storage',
     }
   }
 })

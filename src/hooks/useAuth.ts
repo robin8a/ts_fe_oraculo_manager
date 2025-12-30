@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react';
-import { signIn, signUp, signOut, getCurrentUser, confirmSignUp, resendSignUpCode } from 'aws-amplify/auth';
-import type { SignInInput, SignUpInput } from 'aws-amplify/auth';
+import { Auth } from 'aws-amplify';
 
 export interface AuthUser {
   username: string;
-  userId: string;
-  signInDetails?: any;
+  userId?: string;
+  attributes?: any;
 }
 
 export function useAuth() {
@@ -16,16 +15,28 @@ export function useAuth() {
   // Check if user is authenticated on mount
   useEffect(() => {
     checkAuth();
+    
+    // Listen for auth state changes
+    const unsubscribe = Auth.currentAuthenticatedUser()
+      .then(() => checkAuth())
+      .catch(() => {
+        setUser(null);
+        setLoading(false);
+      });
+
+    return () => {
+      // Cleanup if needed
+    };
   }, []);
 
   const checkAuth = async () => {
     try {
       setLoading(true);
-      const currentUser = await getCurrentUser();
+      const currentUser = await Auth.currentAuthenticatedUser();
       setUser({
         username: currentUser.username,
-        userId: currentUser.userId,
-        signInDetails: currentUser.signInDetails,
+        userId: currentUser.attributes?.sub,
+        attributes: currentUser.attributes,
       });
       setError(null);
     } catch (err) {
@@ -41,24 +52,27 @@ export function useAuth() {
     try {
       setError(null);
       setLoading(true);
-      const signInInput: SignInInput = {
-        username,
-        password,
-      };
-      const result = await signIn(signInInput);
+      const user = await Auth.signIn(username, password);
       
-      // If sign in requires additional steps (like MFA), handle them
-      if (result.isSignedIn) {
-        await checkAuth();
-        return { success: true };
-      } else {
-        // Handle next step (e.g., MFA, new password required)
+      // Check if user needs to change password or complete MFA
+      if (user.challengeName === 'NEW_PASSWORD_REQUIRED') {
         return { 
           success: false, 
-          nextStep: result.nextStep,
-          message: 'Additional authentication steps required' 
+          challengeName: user.challengeName,
+          message: 'New password required. Please set a new password.' 
         };
       }
+      
+      if (user.challengeName === 'SOFTWARE_TOKEN_MFA' || user.challengeName === 'SMS_MFA') {
+        return { 
+          success: false, 
+          challengeName: user.challengeName,
+          message: 'MFA code required.' 
+        };
+      }
+      
+      await checkAuth();
+      return { success: true };
     } catch (err: any) {
       const errorMessage = err.message || 'Failed to sign in';
       setError(errorMessage);
@@ -72,17 +86,18 @@ export function useAuth() {
     try {
       setError(null);
       setLoading(true);
-      const signUpInput: SignUpInput = {
+      const result = await Auth.signUp({
         username,
         password,
-        options: {
-          userAttributes: {
-            email,
-          },
+        attributes: {
+          email,
         },
+      });
+      return { 
+        success: true, 
+        message: 'Sign up successful. Please check your email for verification code.',
+        userSub: result.userSub,
       };
-      await signUp(signUpInput);
-      return { success: true, message: 'Sign up successful. Please check your email for verification code.' };
     } catch (err: any) {
       const errorMessage = err.message || 'Failed to sign up';
       setError(errorMessage);
@@ -96,10 +111,7 @@ export function useAuth() {
     try {
       setError(null);
       setLoading(true);
-      await confirmSignUp({
-        username,
-        confirmationCode,
-      });
+      await Auth.confirmSignUp(username, confirmationCode);
       return { success: true, message: 'Email verified successfully. You can now sign in.' };
     } catch (err: any) {
       const errorMessage = err.message || 'Failed to confirm sign up';
@@ -113,7 +125,7 @@ export function useAuth() {
   const handleResendCode = async (username: string) => {
     try {
       setError(null);
-      await resendSignUpCode({ username });
+      await Auth.resendSignUp(username);
       return { success: true, message: 'Verification code resent to your email.' };
     } catch (err: any) {
       const errorMessage = err.message || 'Failed to resend code';
@@ -125,7 +137,7 @@ export function useAuth() {
   const handleSignOut = async () => {
     try {
       setError(null);
-      await signOut();
+      await Auth.signOut();
       setUser(null);
       return { success: true };
     } catch (err: any) {
@@ -148,4 +160,3 @@ export function useAuth() {
     checkAuth,
   };
 }
-
