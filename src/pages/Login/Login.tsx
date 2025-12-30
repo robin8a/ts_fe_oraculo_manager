@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -6,7 +7,8 @@ import { Input } from '../../components/ui/Input';
 type AuthMode = 'signin' | 'signup' | 'confirm';
 
 export const Login: React.FC = () => {
-  const { signIn, signUp, confirmSignUp, resendCode } = useAuth();
+  const navigate = useNavigate();
+  const { signIn, signUp, confirmSignUp, resendCode, isAuthenticated } = useAuth();
   const [mode, setMode] = useState<AuthMode>('signin');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -15,6 +17,13 @@ export const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/modelai', { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,7 +34,10 @@ export const Login: React.FC = () => {
     try {
       if (mode === 'signin') {
         const result = await signIn(username, password);
-        if (!result.success) {
+        if (result.success) {
+          // Redirect to Model AI page after successful sign in
+          navigate('/modelai', { replace: true });
+        } else {
           setError(result.error || 'Sign in failed');
         }
       } else if (mode === 'signup') {
@@ -40,8 +52,12 @@ export const Login: React.FC = () => {
         const result = await confirmSignUp(username, confirmationCode);
         if (result.success) {
           setMessage(result.message || 'Email verified successfully. You can now sign in.');
-          setMode('signin');
-          setConfirmationCode('');
+          // Auto-switch to sign in mode and wait a moment before showing the form
+          setTimeout(() => {
+            setMode('signin');
+            setConfirmationCode('');
+            setMessage(null);
+          }, 2000);
         } else {
           setError(result.error || 'Confirmation failed');
         }
