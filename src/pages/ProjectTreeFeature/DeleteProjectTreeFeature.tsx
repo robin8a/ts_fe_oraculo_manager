@@ -46,12 +46,40 @@ const fetchAllWithPagination = async <T,>(
         },
       });
 
+      // Check for GraphQL errors in the response
+      if (response.errors && response.errors.length > 0) {
+        console.error('GraphQL errors in pagination:', response.errors);
+        // If it's a permission or data issue, return what we have so far
+        // Don't break completely, just log and continue
+        const errorMessage = response.errors[0]?.message || 'Unknown error';
+        if (errorMessage.includes('Not Authorized') || errorMessage.includes('permission')) {
+          console.warn('Authorization error, stopping pagination');
+          break;
+        }
+      }
+
+      // Check if data is null (can happen with errors)
+      if (!response.data) {
+        console.warn('No data in response, stopping pagination');
+        break;
+      }
+
       const items = extractItems(response);
-      allItems.push(...items);
+      if (items && Array.isArray(items)) {
+        allItems.push(...items);
+      }
 
       nextToken = getNextToken(response);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error in pagination:', err);
+      // If it's a network error or similar, break
+      // If it's a GraphQL error in the catch, it might have been handled above
+      if (err.errors && err.errors.length > 0) {
+        const errorMessage = err.errors[0]?.message || 'Unknown error';
+        if (errorMessage.includes('Not Authorized') || errorMessage.includes('permission')) {
+          console.warn('Authorization error, stopping pagination');
+        }
+      }
       break;
     }
   } while (nextToken);
@@ -85,6 +113,10 @@ export const DeleteProjectTreeFeature: React.FC = () => {
     type: 'success' | 'error' | null;
     message: string;
   }>({ type: null, message: '' });
+  
+  // Pagination state for trees
+  const [treesPage, setTreesPage] = useState(1);
+  const treesPerPage = 100;
 
   // Fetch all data with pagination
   const fetchAllData = async () => {
@@ -139,7 +171,13 @@ export const DeleteProjectTreeFeature: React.FC = () => {
                 {
                   filter: { treeRawDataId: { eq: tree.id } },
                 },
-                (response) => response.data?.listRawData?.items || []
+                (response) => {
+                  // Handle null or undefined data gracefully
+                  if (!response.data || !response.data.listRawData) {
+                    return [];
+                  }
+                  return response.data.listRawData.items || [];
+                }
               );
 
               // Extract unique features from raw data
@@ -246,7 +284,12 @@ export const DeleteProjectTreeFeature: React.FC = () => {
             {
               filter: { treeRawDataId: { eq: tree.id } },
             },
-            (response) => response.data?.listRawData?.items || []
+            (response) => {
+              if (!response.data || !response.data.listRawData) {
+                return [];
+              }
+              return response.data.listRawData.items || [];
+            }
           );
           totalRawData += rawDataItems.length;
         } catch (err) {
@@ -272,7 +315,12 @@ export const DeleteProjectTreeFeature: React.FC = () => {
           {
             filter: { treeRawDataId: { eq: tree.id } },
           },
-          (response) => response.data?.listRawData?.items || []
+          (response) => {
+            if (!response.data || !response.data.listRawData) {
+              return [];
+            }
+            return response.data.listRawData.items || [];
+          }
         );
         deleteItem.cascadeCount!.rawData = rawDataItems.length;
       } catch (err) {
@@ -296,7 +344,12 @@ export const DeleteProjectTreeFeature: React.FC = () => {
           {
             filter: { featureRawDatasId: { eq: feature.id } },
           },
-          (response) => response.data?.listRawData?.items || []
+          (response) => {
+            if (!response.data || !response.data.listRawData) {
+              return [];
+            }
+            return response.data.listRawData.items || [];
+          }
         );
         deleteItem.cascadeCount!.rawData = rawDataItems.length;
       } catch (err) {
@@ -333,7 +386,12 @@ export const DeleteProjectTreeFeature: React.FC = () => {
             {
               filter: { treeRawDataId: { eq: tree.id } },
             },
-            (response) => response.data?.listRawData?.items || []
+            (response) => {
+              if (!response.data || !response.data.listRawData) {
+                return [];
+              }
+              return response.data.listRawData.items || [];
+            }
           );
           for (const rawData of rawDataItems) {
             await API.graphql({
@@ -368,7 +426,12 @@ export const DeleteProjectTreeFeature: React.FC = () => {
           {
             filter: { treeRawDataId: { eq: selectedItem.id } },
           },
-          (response) => response.data?.listRawData?.items || []
+          (response) => {
+            if (!response.data || !response.data.listRawData) {
+              return [];
+            }
+            return response.data.listRawData.items || [];
+          }
         );
         for (const rawData of rawDataItems) {
           await API.graphql({
@@ -394,7 +457,12 @@ export const DeleteProjectTreeFeature: React.FC = () => {
           {
             filter: { featureRawDatasId: { eq: selectedItem.id } },
           },
-          (response) => response.data?.listRawData?.items || []
+          (response) => {
+            if (!response.data || !response.data.listRawData) {
+              return [];
+            }
+            return response.data.listRawData.items || [];
+          }
         );
         for (const rawData of rawDataItems) {
           await API.graphql({
@@ -421,6 +489,11 @@ export const DeleteProjectTreeFeature: React.FC = () => {
 
       // Refresh the data
       await refetch();
+      
+      // Reset to first page if current page becomes empty after deletion
+      if (selectedItem.type === 'tree' && allTrees.length <= (treesPage - 1) * treesPerPage) {
+        setTreesPage(1);
+      }
 
       // Close modal after a short delay
       setTimeout(() => {
@@ -524,39 +597,80 @@ export const DeleteProjectTreeFeature: React.FC = () => {
 
           {/* Trees Section */}
           <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
-              <DocumentIcon className="h-6 w-6 text-green-500 mr-2" />
-              Trees
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-gray-900 flex items-center">
+                <DocumentIcon className="h-6 w-6 text-green-500 mr-2" />
+                Trees
+              </h2>
+              {allTrees.length > 0 && (
+                <div className="text-sm text-gray-500">
+                  Showing {((treesPage - 1) * treesPerPage) + 1} - {Math.min(treesPage * treesPerPage, allTrees.length)} of {allTrees.length}
+                </div>
+              )}
+            </div>
             {allTrees.length === 0 ? (
               <p className="text-gray-500 text-sm">No trees found</p>
             ) : (
-              <div className="space-y-2">
-                {allTrees.map((tree) => {
-                  const project = allProjects.find(p => p.id === (tree as any).projectId);
-                  return (
-                    <div
-                      key={tree.id}
-                      className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                    >
-                      <div className="flex-1">
-                        <div className="font-medium text-gray-900">{tree.name}</div>
-                        <div className="text-sm text-gray-500">
-                          Project: {project?.name || 'Unknown'} • {tree.features.length} {tree.features.length === 1 ? 'feature' : 'features'}
+              <>
+                <div className="space-y-2">
+                  {allTrees
+                    .slice((treesPage - 1) * treesPerPage, treesPage * treesPerPage)
+                    .map((tree) => {
+                      const project = allProjects.find(p => p.id === (tree as any).projectId);
+                      return (
+                        <div
+                          key={tree.id}
+                          className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                        >
+                          <div className="flex-1">
+                            <div className="font-medium text-gray-900">{tree.name}</div>
+                            <div className="text-sm text-gray-500">
+                              Project: {project?.name || 'Unknown'} • {tree.features.length} {tree.features.length === 1 ? 'feature' : 'features'}
+                            </div>
+                          </div>
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            onClick={() => handleDeleteClick('tree', tree)}
+                          >
+                            <TrashIcon className="h-4 w-4 mr-1" />
+                            Delete
+                          </Button>
                         </div>
-                      </div>
+                      );
+                    })}
+                </div>
+                
+                {/* Pagination Controls */}
+                {allTrees.length > treesPerPage && (
+                  <div className="mt-6 flex items-center justify-between border-t border-gray-200 pt-4">
+                    <div className="flex items-center space-x-2">
                       <Button
-                        variant="danger"
+                        variant="outline"
                         size="sm"
-                        onClick={() => handleDeleteClick('tree', tree)}
+                        onClick={() => setTreesPage(prev => Math.max(1, prev - 1))}
+                        disabled={treesPage === 1}
                       >
-                        <TrashIcon className="h-4 w-4 mr-1" />
-                        Delete
+                        Previous
+                      </Button>
+                      <span className="text-sm text-gray-700">
+                        Page {treesPage} of {Math.ceil(allTrees.length / treesPerPage)}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setTreesPage(prev => Math.min(Math.ceil(allTrees.length / treesPerPage), prev + 1))}
+                        disabled={treesPage >= Math.ceil(allTrees.length / treesPerPage)}
+                      >
+                        Next
                       </Button>
                     </div>
-                  );
-                })}
-              </div>
+                    <div className="text-sm text-gray-500">
+                      {treesPerPage} per page
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
