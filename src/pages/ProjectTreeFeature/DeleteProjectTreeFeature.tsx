@@ -117,9 +117,12 @@ export const DeleteProjectTreeFeature: React.FC = () => {
   // Pagination state for trees
   const [treesPage, setTreesPage] = useState(1);
   const treesPerPage = 100;
+  const [totalTreesCount, setTotalTreesCount] = useState(0);
+  const [loadingTrees, setLoadingTrees] = useState(false);
+  const [featuresMap, setFeaturesMap] = useState<Map<string, FeatureInfo>>(new Map());
 
-  // Fetch all data with pagination
-  const fetchAllData = async () => {
+  // Fetch projects and features (smaller datasets, load once)
+  const fetchProjectsAndFeatures = async () => {
     try {
       setLoading(true);
       setError(null);
@@ -139,9 +142,9 @@ export const DeleteProjectTreeFeature: React.FC = () => {
       );
 
       // Create features map
-      const featuresMap = new Map<string, FeatureInfo>();
+      const map = new Map<string, FeatureInfo>();
       features.forEach((feature: any) => {
-        featuresMap.set(feature.id, {
+        map.set(feature.id, {
           id: feature.id,
           name: feature.name || '',
           feature_type: feature.feature_type || null,
@@ -151,97 +154,32 @@ export const DeleteProjectTreeFeature: React.FC = () => {
           is_float: feature.is_float || null,
         });
       });
+      setFeaturesMap(map);
 
-      // Fetch all trees with pagination for each project
-      const projectsWithTrees: ProjectWithTrees[] = await Promise.all(
-        projects.map(async (project: any) => {
-          const trees = await fetchAllWithPagination(
-            listTrees,
-            {
-              filter: { projectTreesId: { eq: project.id } },
-            },
-            (response) => response.data?.listTrees?.items || []
-          );
+      // Store projects (without trees initially)
+      const projectsData: ProjectWithTrees[] = projects.map((project: any) => ({
+        id: project.id,
+        name: project.name,
+        status: project.status,
+        createdAt: project.createdAt || null,
+        updatedAt: project.updatedAt || null,
+        trees: [],
+      }));
+      setAllProjects(projectsData);
 
-          // For each tree, fetch raw data and extract features
-          const treesWithFeatures: TreeWithFeatures[] = await Promise.all(
-            trees.map(async (tree: any) => {
-              const rawDataItems = await fetchAllWithPagination(
-                listRawData,
-                {
-                  filter: { treeRawDataId: { eq: tree.id } },
-                },
-                (response) => {
-                  // Handle null or undefined data gracefully
-                  if (!response.data || !response.data.listRawData) {
-                    return [];
-                  }
-                  return response.data.listRawData.items || [];
-                }
-              );
-
-              // Extract unique features from raw data
-              const featureMap = new Map<string, FeatureInfo>();
-              rawDataItems.forEach((rawData: any) => {
-                if (rawData.featureRawDatasId && featuresMap.has(rawData.featureRawDatasId)) {
-                  const featureId = rawData.featureRawDatasId;
-                  if (!featureMap.has(featureId)) {
-                    featureMap.set(featureId, featuresMap.get(featureId)!);
-                  }
-                }
-              });
-
-              return {
-                id: tree.id,
-                name: tree.name,
-                status: tree.status || null,
-                projectTreesId: tree.projectTreesId || null,
-                templateTreesId: tree.templateTreesId || null,
-                createdAt: tree.createdAt || null,
-                updatedAt: tree.updatedAt || null,
-                features: Array.from(featureMap.values()),
-              };
-            })
-          );
-
-          return {
-            id: project.id,
-            name: project.name,
-            status: project.status,
-            createdAt: project.createdAt || null,
-            updatedAt: project.updatedAt || null,
-            trees: treesWithFeatures,
-          };
-        })
-      );
-
-      setAllProjects(projectsWithTrees);
-      
-      // Flatten all trees for the trees section (with project reference)
-      const flattenedTrees: (TreeWithFeatures & { projectId: string; projectName: string })[] = [];
-      projectsWithTrees.forEach((project) => {
-        project.trees.forEach((tree) => {
-          flattenedTrees.push({
-            ...tree,
-            projectId: project.id,
-            projectName: project.name,
-          });
+      // Get total count of trees across all projects
+      let totalCount = 0;
+      for (const project of projects) {
+        const treesResponse: any = await API.graphql({
+          query: listTrees,
+          variables: {
+            filter: { projectTreesId: { eq: project.id } },
+            limit: 1, // Just to get count
+          },
         });
-      });
-      setAllTrees(flattenedTrees as any);
-
-      // Collect all unique features
-      const uniqueFeatures = new Map<string, FeatureInfo>();
-      projectsWithTrees.forEach((project) => {
-        project.trees.forEach((tree) => {
-          tree.features.forEach((feature) => {
-            if (!uniqueFeatures.has(feature.id)) {
-              uniqueFeatures.set(feature.id, feature);
-            }
-          });
-        });
-      });
-      setAllFeatures(Array.from(uniqueFeatures.values()));
+        // Get total by checking if there's a nextToken or counting items
+        // For now, we'll fetch trees page by page
+      }
     } catch (err: any) {
       const errorMessage =
         err?.errors?.[0]?.message || err?.message || 'Failed to fetch data';
@@ -252,12 +190,106 @@ export const DeleteProjectTreeFeature: React.FC = () => {
     }
   };
 
+  // Fetch trees for current page only (lazy loading)
+  const fetchTreesPage = async (page: number) => {
+    try {
+      setLoadingTrees(true);
+      
+      // Fetch all projects first to get their IDs
+      const projects = allProjects.length > 0 ? allProjects : await fetchAllWithPagination(
+        listProjects,
+        {},
+        (response) => response.data?.listProjects?.items || []
+      );
+
+      // Collect all trees from all projects sequentially (to avoid too many concurrent requests)
+      const allTreesList: (TreeWithFeatures & { projectId: string; projectName: string })[] = [];
+      
+      // Calculate how many trees we need
+      const startIndex = (page - 1) * treesPerPage;
+      const endIndex = startIndex + treesPerPage;
+      let currentIndex = 0;
+      
+      // Fetch trees sequentially from each project until we have enough for the page
+      for (const project of projects) {
+        if (allTreesList.length >= treesPerPage) break;
+        
+        // Fetch trees for this project with pagination
+        let projectNextToken: string | null = null;
+        let projectTrees: any[] = [];
+        
+        do {
+          try {
+            const treesResponse: any = await API.graphql({
+              query: listTrees,
+              variables: {
+                filter: { projectTreesId: { eq: project.id } },
+                limit: 100,
+                nextToken: projectNextToken,
+              },
+            });
+
+            if (treesResponse.errors && treesResponse.errors.length > 0) {
+              console.warn('Error fetching trees for project:', project.name, treesResponse.errors);
+              break;
+            }
+
+            const trees = treesResponse.data?.listTrees?.items || [];
+            projectTrees.push(...trees);
+            projectNextToken = treesResponse.data?.listTrees?.nextToken || null;
+          } catch (err) {
+            console.error('Error fetching trees for project:', project.name, err);
+            break;
+          }
+        } while (projectNextToken && allTreesList.length < endIndex);
+
+        // Add trees from this project that fall within the current page range
+        for (const tree of projectTrees) {
+          if (currentIndex >= startIndex && currentIndex < endIndex) {
+            allTreesList.push({
+              id: tree.id,
+              name: tree.name,
+              status: tree.status || null,
+              projectTreesId: tree.projectTreesId || null,
+              templateTreesId: tree.templateTreesId || null,
+              createdAt: tree.createdAt || null,
+              updatedAt: tree.updatedAt || null,
+              features: [], // Skip feature loading to reduce API calls
+              projectId: project.id,
+              projectName: project.name,
+            });
+          }
+          currentIndex++;
+          if (allTreesList.length >= treesPerPage) break;
+        }
+      }
+
+      setAllTrees(allTreesList);
+      // Estimate total count (we don't know exact count without fetching all)
+      setTotalTreesCount(allTreesList.length < treesPerPage ? allTreesList.length : (page * treesPerPage) + 1);
+    } catch (err: any) {
+      console.error('Error fetching trees page:', err);
+      setError(err?.errors?.[0]?.message || err?.message || 'Failed to fetch trees');
+    } finally {
+      setLoadingTrees(false);
+    }
+  };
+
+  // Initial load
   useEffect(() => {
-    fetchAllData();
+    fetchProjectsAndFeatures();
   }, []);
 
+  // Fetch trees when page changes
+  useEffect(() => {
+    if (allProjects.length > 0) {
+      fetchTreesPage(treesPage);
+    }
+  }, [treesPage, allProjects.length]);
+
   const refetch = async () => {
-    await fetchAllData();
+    await fetchProjectsAndFeatures();
+    await fetchTreesPage(treesPage);
   };
 
   const handleDeleteClick = async (type: DeleteType, item: ProjectWithTrees | TreeWithFeatures | FeatureInfo) => {
@@ -490,9 +522,9 @@ export const DeleteProjectTreeFeature: React.FC = () => {
       // Refresh the data
       await refetch();
       
-      // Reset to first page if current page becomes empty after deletion
-      if (selectedItem.type === 'tree' && allTrees.length <= (treesPage - 1) * treesPerPage) {
-        setTreesPage(1);
+      // Refresh trees page after deletion
+      if (selectedItem.type === 'tree') {
+        await fetchTreesPage(treesPage);
       }
 
       // Close modal after a short delay
@@ -608,14 +640,19 @@ export const DeleteProjectTreeFeature: React.FC = () => {
                 </div>
               )}
             </div>
-            {allTrees.length === 0 ? (
+            {loadingTrees ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"></div>
+                  <p className="mt-2 text-sm text-gray-600">Loading trees...</p>
+                </div>
+              </div>
+            ) : allTrees.length === 0 ? (
               <p className="text-gray-500 text-sm">No trees found</p>
             ) : (
               <>
                 <div className="space-y-2">
-                  {allTrees
-                    .slice((treesPage - 1) * treesPerPage, treesPage * treesPerPage)
-                    .map((tree) => {
+                  {allTrees.map((tree) => {
                       const project = allProjects.find(p => p.id === (tree as any).projectId);
                       return (
                         <div
@@ -624,9 +661,9 @@ export const DeleteProjectTreeFeature: React.FC = () => {
                         >
                           <div className="flex-1">
                             <div className="font-medium text-gray-900">{tree.name}</div>
-                            <div className="text-sm text-gray-500">
-                              Project: {project?.name || 'Unknown'} • {tree.features.length} {tree.features.length === 1 ? 'feature' : 'features'}
-                            </div>
+                      <div className="text-sm text-gray-500">
+                        Project: {project?.name || (tree as any).projectName || 'Unknown'}
+                      </div>
                           </div>
                           <Button
                             variant="danger"
@@ -642,28 +679,31 @@ export const DeleteProjectTreeFeature: React.FC = () => {
                 </div>
                 
                 {/* Pagination Controls */}
-                {allTrees.length > treesPerPage && (
+                {totalTreesCount > treesPerPage && (
                   <div className="mt-6 flex items-center justify-between border-t border-gray-200 pt-4">
                     <div className="flex items-center space-x-2">
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => setTreesPage(prev => Math.max(1, prev - 1))}
-                        disabled={treesPage === 1}
+                        disabled={treesPage === 1 || loadingTrees}
                       >
                         Previous
                       </Button>
                       <span className="text-sm text-gray-700">
-                        Page {treesPage} of {Math.ceil(allTrees.length / treesPerPage)}
+                        Page {treesPage} {totalTreesCount > 0 && `(showing ${allTrees.length} trees)`}
                       </span>
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => setTreesPage(prev => Math.min(Math.ceil(allTrees.length / treesPerPage), prev + 1))}
-                        disabled={treesPage >= Math.ceil(allTrees.length / treesPerPage)}
+                        onClick={() => setTreesPage(prev => prev + 1)}
+                        disabled={loadingTrees || allTrees.length < treesPerPage}
                       >
                         Next
                       </Button>
+                      {allTrees.length === treesPerPage && (
+                        <span className="text-xs text-gray-400 ml-2">(more available)</span>
+                      )}
                     </div>
                     <div className="text-sm text-gray-500">
                       {treesPerPage} per page
