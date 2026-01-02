@@ -117,6 +117,10 @@ export const DeleteProjectTreeFeature: React.FC = () => {
   // Pagination state for trees
   const [treesPage, setTreesPage] = useState(1);
   const treesPerPage = 100;
+  
+  // Bulk delete state
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [totalTreesCount, setTotalTreesCount] = useState(0);
   const [loadingTrees, setLoadingTrees] = useState(false);
   const [featuresMap, setFeaturesMap] = useState<Map<string, FeatureInfo>>(new Map());
@@ -553,6 +557,115 @@ export const DeleteProjectTreeFeature: React.FC = () => {
     }
   };
 
+  const handleBulkDeleteClick = () => {
+    if (allTrees.length === 0) return;
+    setIsBulkDeleteModalOpen(true);
+  };
+
+  const handleConfirmBulkDelete = async () => {
+    if (allTrees.length === 0) return;
+
+    setIsBulkDeleting(true);
+    setDeleteStatus({ type: null, message: '' });
+
+    try {
+      let successCount = 0;
+      let errorCount = 0;
+      const errors: string[] = [];
+
+      // Delete all trees in the current page
+      for (const tree of allTrees) {
+        try {
+          // First, get all RawData for this tree with pagination
+          const rawDataItems = await fetchAllWithPagination(
+            listRawData,
+            {
+              filter: { treeRawDataId: { eq: tree.id } },
+            },
+            (response) => {
+              if (!response.data || !response.data.listRawData) {
+                return [];
+              }
+              return response.data.listRawData.items || [];
+            }
+          );
+
+          // Delete all raw data
+          for (const rawData of rawDataItems) {
+            try {
+              await API.graphql({
+                query: deleteRawData,
+                variables: {
+                  input: { id: rawData.id },
+                },
+              });
+            } catch (err) {
+              console.error(`Error deleting raw data ${rawData.id}:`, err);
+            }
+          }
+
+          // Delete the tree
+          await API.graphql({
+            query: deleteTree,
+            variables: {
+              input: { id: tree.id },
+            },
+          });
+
+          successCount++;
+        } catch (err: any) {
+          errorCount++;
+          const errorMessage = err?.errors?.[0]?.message || err?.message || 'Unknown error';
+          errors.push(`${tree.name}: ${errorMessage}`);
+          console.error(`Error deleting tree ${tree.id}:`, err);
+        }
+      }
+
+      // Show results
+      if (errorCount === 0) {
+        setDeleteStatus({
+          type: 'success',
+          message: `Successfully deleted ${successCount} ${successCount === 1 ? 'tree' : 'trees'} and all related data.`,
+        });
+      } else if (successCount > 0) {
+        setDeleteStatus({
+          type: 'error',
+          message: `Deleted ${successCount} ${successCount === 1 ? 'tree' : 'trees'}, but ${errorCount} ${errorCount === 1 ? 'failed' : 'failed'}. ${errors.slice(0, 3).join('; ')}${errors.length > 3 ? '...' : ''}`,
+        });
+      } else {
+        setDeleteStatus({
+          type: 'error',
+          message: `Failed to delete trees. ${errors.slice(0, 3).join('; ')}${errors.length > 3 ? '...' : ''}`,
+        });
+      }
+
+      // Refresh trees page after deletion
+      await fetchTreesPage(treesPage);
+
+      // Close modal after a delay
+      setTimeout(() => {
+        setIsBulkDeleteModalOpen(false);
+        setDeleteStatus({ type: null, message: '' });
+      }, errorCount === 0 ? 2000 : 5000);
+    } catch (err: any) {
+      const errorMessage =
+        err?.errors?.[0]?.message || err?.message || 'Failed to delete trees';
+      setDeleteStatus({
+        type: 'error',
+        message: errorMessage,
+      });
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
+  const handleCloseBulkDeleteModal = () => {
+    if (!isBulkDeleting) {
+      setIsBulkDeleteModalOpen(false);
+      setDeleteStatus({ type: null, message: '' });
+    }
+  };
+
 
   return (
     <div className="space-y-6">
@@ -634,11 +747,24 @@ export const DeleteProjectTreeFeature: React.FC = () => {
                 <DocumentIcon className="h-6 w-6 text-green-500 mr-2" />
                 Trees
               </h2>
-              {allTrees.length > 0 && (
-                <div className="text-sm text-gray-500">
-                  Showing {((treesPage - 1) * treesPerPage) + 1} - {Math.min(treesPage * treesPerPage, allTrees.length)} of {allTrees.length}
-                </div>
-              )}
+              <div className="flex items-center gap-4">
+                {allTrees.length > 0 && (
+                  <div className="text-sm text-gray-500">
+                    Showing {((treesPage - 1) * treesPerPage) + 1} - {Math.min(treesPage * treesPerPage, allTrees.length)} of {allTrees.length}
+                  </div>
+                )}
+                {allTrees.length > 0 && (
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={handleBulkDeleteClick}
+                    disabled={loadingTrees}
+                  >
+                    <TrashIcon className="h-4 w-4 mr-1" />
+                    Delete All Loaded ({allTrees.length})
+                  </Button>
+                )}
+              </div>
             </div>
             {loadingTrees ? (
               <div className="flex items-center justify-center py-8">
@@ -847,6 +973,86 @@ export const DeleteProjectTreeFeature: React.FC = () => {
             </div>
             <div className="flex justify-end pt-4">
               <Button variant="secondary" onClick={handleCloseModal}>
+                Close
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Bulk Delete Confirmation Modal */}
+      <Modal
+        isOpen={isBulkDeleteModalOpen}
+        onClose={handleCloseBulkDeleteModal}
+        title="Confirm Bulk Deletion"
+        size="lg"
+      >
+        {deleteStatus.type === null && (
+          <div className="space-y-4">
+            <div className="flex items-start">
+              <ExclamationTriangleIcon className="h-6 w-6 text-red-600 mt-0.5 mr-3 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm text-gray-700">
+                  Are you sure you want to delete all <span className="font-semibold">{allTrees.length} trees</span> currently loaded on this page?
+                </p>
+                <p className="mt-2 text-sm text-red-600 font-medium">
+                  This action cannot be undone!
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <p className="text-sm font-medium text-yellow-800 mb-2">
+                The following will be deleted for each tree:
+              </p>
+              <ul className="text-sm text-yellow-700 space-y-1">
+                <li>• All raw data entries associated with each tree</li>
+                <li>• The tree itself</li>
+              </ul>
+              <p className="text-sm text-yellow-700 mt-3 font-medium">
+                Total: {allTrees.length} trees and their associated raw data
+              </p>
+            </div>
+
+            <div className="flex justify-end space-x-3 pt-4">
+              <Button
+                variant="secondary"
+                onClick={handleCloseBulkDeleteModal}
+                disabled={isBulkDeleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={handleConfirmBulkDelete}
+                isLoading={isBulkDeleting}
+              >
+                {isBulkDeleting ? 'Deleting...' : `Delete All ${allTrees.length} Trees`}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {deleteStatus.type === 'success' && (
+          <div className="space-y-4">
+            <div className="flex items-start">
+              <CheckCircleIcon className="h-6 w-6 text-green-600 mt-0.5 mr-3 flex-shrink-0" />
+              <p className="text-sm text-gray-700">{deleteStatus.message}</p>
+            </div>
+          </div>
+        )}
+
+        {deleteStatus.type === 'error' && (
+          <div className="space-y-4">
+            <div className="flex items-start">
+              <XCircleIcon className="h-6 w-6 text-red-600 mt-0.5 mr-3 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-red-800">Error</p>
+                <p className="text-sm text-red-700 mt-1">{deleteStatus.message}</p>
+              </div>
+            </div>
+            <div className="flex justify-end pt-4">
+              <Button variant="secondary" onClick={handleCloseBulkDeleteModal}>
                 Close
               </Button>
             </div>
