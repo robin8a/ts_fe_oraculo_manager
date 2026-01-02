@@ -124,6 +124,49 @@ export const DeleteProjectTreeFeature: React.FC = () => {
   const [totalTreesCount, setTotalTreesCount] = useState(0);
   const [loadingTrees, setLoadingTrees] = useState(false);
   const [featuresMap, setFeaturesMap] = useState<Map<string, FeatureInfo>>(new Map());
+  
+  // Dashboard stats
+  const [dashboardStats, setDashboardStats] = useState({
+    totalProjects: 0,
+    totalTrees: 0,
+    loading: true,
+  });
+
+  // Fetch dashboard statistics
+  const fetchDashboardStats = async () => {
+    try {
+      setDashboardStats(prev => ({ ...prev, loading: true }));
+
+      // Count all projects
+      const projects = await fetchAllWithPagination(
+        listProjects,
+        {},
+        (response) => response.data?.listProjects?.items || []
+      );
+
+      // Count all trees across all projects
+      let totalTrees = 0;
+      for (const project of projects) {
+        const trees = await fetchAllWithPagination(
+          listTrees,
+          {
+            filter: { projectTreesId: { eq: project.id } },
+          },
+          (response) => response.data?.listTrees?.items || []
+        );
+        totalTrees += trees.length;
+      }
+
+      setDashboardStats({
+        totalProjects: projects.length,
+        totalTrees: totalTrees,
+        loading: false,
+      });
+    } catch (err: any) {
+      console.error('Error fetching dashboard stats:', err);
+      setDashboardStats(prev => ({ ...prev, loading: false }));
+    }
+  };
 
   // Fetch projects and features (smaller datasets, load once)
   const fetchProjectsAndFeatures = async () => {
@@ -282,6 +325,7 @@ export const DeleteProjectTreeFeature: React.FC = () => {
   // Initial load
   useEffect(() => {
     fetchProjectsAndFeatures();
+    fetchDashboardStats();
   }, []);
 
   // Fetch trees when page changes
@@ -292,8 +336,11 @@ export const DeleteProjectTreeFeature: React.FC = () => {
   }, [treesPage, allProjects.length]);
 
   const refetch = async () => {
-    await fetchProjectsAndFeatures();
-    await fetchTreesPage(treesPage);
+    await Promise.all([
+      fetchProjectsAndFeatures(),
+      fetchTreesPage(treesPage),
+      fetchDashboardStats(),
+    ]);
   };
 
   const handleDeleteClick = async (type: DeleteType, item: ProjectWithTrees | TreeWithFeatures | FeatureInfo) => {
@@ -526,6 +573,9 @@ export const DeleteProjectTreeFeature: React.FC = () => {
       // Refresh the data
       await refetch();
       
+      // Refresh dashboard stats
+      await fetchDashboardStats();
+      
       // Refresh trees page after deletion
       if (selectedItem.type === 'tree') {
         await fetchTreesPage(treesPage);
@@ -639,8 +689,11 @@ export const DeleteProjectTreeFeature: React.FC = () => {
         });
       }
 
-      // Refresh trees page after deletion
-      await fetchTreesPage(treesPage);
+      // Refresh trees page and stats after deletion
+      await Promise.all([
+        fetchTreesPage(treesPage),
+        fetchDashboardStats(),
+      ]);
 
       // Close modal after a delay
       setTimeout(() => {
@@ -669,6 +722,47 @@ export const DeleteProjectTreeFeature: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Dashboard */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Total Projects</p>
+              {dashboardStats.loading ? (
+                <div className="mt-2 flex items-center">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600"></div>
+                  <span className="ml-2 text-xs text-gray-500">Loading...</span>
+                </div>
+              ) : (
+                <p className="mt-2 text-3xl font-bold text-gray-900">{dashboardStats.totalProjects}</p>
+              )}
+            </div>
+            <div className="p-3 bg-blue-100 rounded-lg">
+              <FolderIcon className="h-8 w-8 text-blue-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Total Trees</p>
+              {dashboardStats.loading ? (
+                <div className="mt-2 flex items-center">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600"></div>
+                  <span className="ml-2 text-xs text-gray-500">Loading...</span>
+                </div>
+              ) : (
+                <p className="mt-2 text-3xl font-bold text-gray-900">{dashboardStats.totalTrees}</p>
+              )}
+            </div>
+            <div className="p-3 bg-green-100 rounded-lg">
+              <DocumentIcon className="h-8 w-8 text-green-600" />
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Page Header */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Delete Projects, Trees & Features</h1>
