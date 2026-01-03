@@ -1,10 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useProjectTreeFeature } from '../../hooks/useProjectTreeFeature';
 import { ProjectTreeView } from '../../components/ProjectTreeView';
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 
 export const ProjectTreeFeatureView: React.FC = () => {
-  const { projects, loading, error, refetch } = useProjectTreeFeature();
+  const [treeLimit, setTreeLimit] = useState<number | undefined>(undefined);
+  const { projects, loading, error, refetch } = useProjectTreeFeature(treeLimit);
+
+  const handleTreeLimitChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = event.target.value;
+    setTreeLimit(value === 'all' ? undefined : parseInt(value, 10));
+  };
 
   return (
     <div className="space-y-6">
@@ -15,6 +21,25 @@ export const ProjectTreeFeatureView: React.FC = () => {
           Explore projects, their associated trees, and features through a hierarchical drill-down
           view.
         </p>
+        
+        {/* Tree Limit Control */}
+        <div className="mt-4 flex items-center gap-3">
+          <label htmlFor="treeLimit" className="text-sm font-medium text-gray-700">
+            Trees per Project:
+          </label>
+          <select
+            id="treeLimit"
+            value={treeLimit === undefined ? 'all' : treeLimit.toString()}
+            onChange={handleTreeLimitChange}
+            className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+          >
+            <option value="all">All</option>
+            <option value="10">10</option>
+            <option value="25">25</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </select>
+        </div>
       </div>
 
       {/* Error State */}

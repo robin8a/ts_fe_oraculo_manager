@@ -10,7 +10,7 @@ export interface UseProjectTreeFeatureResult {
   refetch: () => Promise<void>;
 }
 
-export function useProjectTreeFeature(): UseProjectTreeFeatureResult {
+export function useProjectTreeFeature(treeLimit?: number): UseProjectTreeFeatureResult {
   const [projects, setProjects] = useState<ProjectWithTrees[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -62,6 +62,7 @@ export function useProjectTreeFeature(): UseProjectTreeFeatureResult {
               filter: {
                 projectTreesId: { eq: project.id },
               },
+              limit: treeLimit || undefined,
             },
           });
 
@@ -126,7 +127,7 @@ export function useProjectTreeFeature(): UseProjectTreeFeatureResult {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [treeLimit]);
 
   useEffect(() => {
     fetchData();
