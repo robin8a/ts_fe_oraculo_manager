@@ -121,6 +121,7 @@ export const DeleteProjectTreeFeature: React.FC = () => {
   // Bulk delete state
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [bulkDeleteProgress, setBulkDeleteProgress] = useState({ current: 0, total: 0 });
   const [totalTreesCount, setTotalTreesCount] = useState(0);
   const [loadingTrees, setLoadingTrees] = useState(false);
   const [featuresMap, setFeaturesMap] = useState<Map<string, FeatureInfo>>(new Map());
@@ -617,6 +618,7 @@ export const DeleteProjectTreeFeature: React.FC = () => {
 
     setIsBulkDeleting(true);
     setDeleteStatus({ type: null, message: '' });
+    setBulkDeleteProgress({ current: 0, total: allTrees.length });
 
     try {
       let successCount = 0;
@@ -624,7 +626,9 @@ export const DeleteProjectTreeFeature: React.FC = () => {
       const errors: string[] = [];
 
       // Delete all trees in the current page
-      for (const tree of allTrees) {
+      for (let i = 0; i < allTrees.length; i++) {
+        const tree = allTrees[i];
+        setBulkDeleteProgress({ current: i, total: allTrees.length });
         try {
           // First, get all RawData for this tree with pagination
           const rawDataItems = await fetchAllWithPagination(
@@ -669,6 +673,9 @@ export const DeleteProjectTreeFeature: React.FC = () => {
           errors.push(`${tree.name}: ${errorMessage}`);
           console.error(`Error deleting tree ${tree.id}:`, err);
         }
+        
+        // Update progress after each tree
+        setBulkDeleteProgress({ current: i + 1, total: allTrees.length });
       }
 
       // Show results
@@ -716,6 +723,7 @@ export const DeleteProjectTreeFeature: React.FC = () => {
     if (!isBulkDeleting) {
       setIsBulkDeleteModalOpen(false);
       setDeleteStatus({ type: null, message: '' });
+      setBulkDeleteProgress({ current: 0, total: 0 });
     }
   };
 
@@ -1083,17 +1091,41 @@ export const DeleteProjectTreeFeature: React.FC = () => {
       >
         {deleteStatus.type === null && (
           <div className="space-y-4">
-            <div className="flex items-start">
-              <ExclamationTriangleIcon className="h-6 w-6 text-red-600 mt-0.5 mr-3 flex-shrink-0" />
-              <div className="flex-1">
-                <p className="text-sm text-gray-700">
-                  Are you sure you want to delete all <span className="font-semibold">{allTrees.length} trees</span> currently loaded on this page?
-                </p>
-                <p className="mt-2 text-sm text-red-600 font-medium">
-                  This action cannot be undone!
+            {!isBulkDeleting ? (
+              <>
+                <div className="flex items-start">
+                  <ExclamationTriangleIcon className="h-6 w-6 text-red-600 mt-0.5 mr-3 flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-sm text-gray-700">
+                      Are you sure you want to delete all <span className="font-semibold">{allTrees.length} trees</span> currently loaded on this page?
+                    </p>
+                    <p className="mt-2 text-sm text-red-600 font-medium">
+                      This action cannot be undone!
+                    </p>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700">Deleting trees...</span>
+                  <span className="text-sm font-semibold text-gray-900">
+                    {bulkDeleteProgress.current} / {bulkDeleteProgress.total}
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2.5">
+                  <div
+                    className="bg-primary-600 h-2.5 rounded-full transition-all duration-300"
+                    style={{
+                      width: `${(bulkDeleteProgress.current / bulkDeleteProgress.total) * 100}%`,
+                    }}
+                  ></div>
+                </div>
+                <p className="text-xs text-gray-500 text-center">
+                  Please wait while trees are being deleted...
                 </p>
               </div>
-            </div>
+            )}
 
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
               <p className="text-sm font-medium text-yellow-800 mb-2">
@@ -1108,22 +1140,22 @@ export const DeleteProjectTreeFeature: React.FC = () => {
               </p>
             </div>
 
-            <div className="flex justify-end space-x-3 pt-4">
-              <Button
-                variant="secondary"
-                onClick={handleCloseBulkDeleteModal}
-                disabled={isBulkDeleting}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="danger"
-                onClick={handleConfirmBulkDelete}
-                isLoading={isBulkDeleting}
-              >
-                {isBulkDeleting ? 'Deleting...' : `Delete All ${allTrees.length} Trees`}
-              </Button>
-            </div>
+            {!isBulkDeleting && (
+              <div className="flex justify-end space-x-3 pt-4">
+                <Button
+                  variant="secondary"
+                  onClick={handleCloseBulkDeleteModal}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="danger"
+                  onClick={handleConfirmBulkDelete}
+                >
+                  Delete All {allTrees.length} Trees
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
