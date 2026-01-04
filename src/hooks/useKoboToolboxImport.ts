@@ -402,91 +402,126 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
                 });
 
                 // Extract full download URL
-                // KoboToolbox may store audio as relative path, filename, or full URL
+                // According to KoboToolbox API docs, audio files should be at:
+                // https://[server_url]/media/[username]/attachments/[filename]
+                // Priority: 1) download_url from _attachments, 2) construct from filename
                 let audioUrl = value;
+                let audioFilename = value;
                 console.log(`Audio column "${columnName}" value:`, value);
                 console.log(`Row attachments:`, row._attachments);
                 
-                // If it's not a full URL, try to construct it
-                if (!audioUrl.startsWith('http://') && !audioUrl.startsWith('https://')) {
-                  // Check if there's an attachment with this filename or matching pattern
-                  if (row._attachments && Array.isArray(row._attachments)) {
-                    // Try to find attachment by filename match
-                    const attachment = row._attachments.find((att: any) => {
-                      if (!att) return false;
-                      const attFilename = att.filename || '';
-                      const attUrl = att.download_url || '';
-                      return (
-                        attFilename === audioUrl ||
-                        attFilename.includes(audioUrl) ||
-                        audioUrl.includes(attFilename) ||
-                        attUrl.includes(audioUrl) ||
-                        audioUrl.includes(attUrl.split('/').pop() || '')
-                      );
-                    });
-                    
-                    if (attachment?.download_url) {
-                      audioUrl = attachment.download_url;
-                      console.log(`Found attachment URL: ${audioUrl}`);
-                    } else {
-                      // Try to construct URL from server and value
-                      const baseUrl = config.serverUrl.startsWith('http') 
-                        ? config.serverUrl 
-                        : `https://${config.serverUrl}`;
-                      // KoboToolbox attachment URLs are typically at /media/original/ or /attachments/
-                      // Try common paths
-                      if (audioUrl.startsWith('/')) {
-                        audioUrl = `${baseUrl}${audioUrl}`;
-                      } else {
-                        audioUrl = `${baseUrl}/media/original/${audioUrl}`;
-                      }
-                      console.log(`Constructed URL: ${audioUrl}`);
-                    }
-                  } else {
-                    // Construct URL from server
+                // First, check if _attachments array has a download_url (most reliable)
+                if (row._attachments && Array.isArray(row._attachments)) {
+                  // Try to find attachment by filename match
+                  const attachment = row._attachments.find((att: any) => {
+                    if (!att) return false;
+                    const attFilename = att.filename || '';
+                    const attUrl = att.download_url || '';
+                    const valueStr = String(value);
+                    return (
+                      attFilename === valueStr ||
+                      attFilename.includes(valueStr) ||
+                      valueStr.includes(attFilename) ||
+                      attUrl.includes(valueStr) ||
+                      valueStr.includes(attUrl.split('/').pop() || '')
+                    );
+                  }) || row._attachments[0]; // Fallback to first attachment if no match
+                  
+                  if (attachment?.download_url) {
+                    // Use the download_url directly (most reliable)
+                    audioUrl = attachment.download_url;
+                    audioFilename = attachment.filename || audioFilename;
+                    console.log(`Found attachment download_url: ${audioUrl}`);
+                  } else if (attachment?.filename) {
+                    // Construct URL using proper KoboToolbox media format
+                    // Format: https://[server_url]/media/[username]/attachments/[filename]
                     const baseUrl = config.serverUrl.startsWith('http') 
-                      ? config.serverUrl 
+                      ? config.serverUrl.replace(/\/$/, '') // Remove trailing slash
                       : `https://${config.serverUrl}`;
-                    if (audioUrl.startsWith('/')) {
-                      audioUrl = `${baseUrl}${audioUrl}`;
-                    } else {
-                      audioUrl = `${baseUrl}/media/original/${audioUrl}`;
-                    }
-                    console.log(`Constructed URL (no attachments): ${audioUrl}`);
+                    
+                    // Extract username from submission or use 'original' as fallback
+                    // The username is typically in the submission metadata or can be derived
+                    // For now, try 'original' which is a common path
+                    const filename = attachment.filename;
+                    audioFilename = filename;
+                    
+                    // Try the standard format first: /media/[username]/attachments/[filename]
+                    // If we have the submission owner info, use it; otherwise try 'original'
+                    audioUrl = `${baseUrl}/media/original/attachments/${filename}`;
+                    console.log(`Constructed media URL from attachment filename: ${audioUrl}`);
                   }
-                } else {
-                  console.log(`Using full URL: ${audioUrl}`);
+                }
+                
+                // If still not a full URL, construct it using KoboToolbox media format
+                if (!audioUrl.startsWith('http://') && !audioUrl.startsWith('https://')) {
+                  const baseUrl = config.serverUrl.startsWith('http') 
+                    ? config.serverUrl.replace(/\/$/, '') // Remove trailing slash
+                    : `https://${config.serverUrl}`;
+                  
+                  // KoboToolbox media URL format: /media/[username]/attachments/[filename]
+                  if (audioUrl.startsWith('/')) {
+                    // Already has leading slash, just prepend base URL
+                    audioUrl = `${baseUrl}${audioUrl}`;
+                  } else {
+                    // Construct full path: /media/original/attachments/[filename]
+                    audioUrl = `${baseUrl}/media/original/attachments/${audioUrl}`;
+                  }
+                  console.log(`Constructed media URL: ${audioUrl}`);
                 }
 
                 console.log(`Final audio URL: ${audioUrl}`);
+                console.log(`Audio filename: ${audioFilename}`);
 
                 // Download audio file (pass serverUrl for URL construction if needed)
                 const audioBlob = await downloadAudioFile(audioUrl, config.apiKey, config.serverUrl);
                 
-                // Detect original file extension from URL or MIME type
+                // Detect original file extension from filename, URL, or MIME type
                 let fileExtension = 'm4a'; // Default to m4a for KoboToolbox audio
-                const urlLower = audioUrl.toLowerCase();
-                if (urlLower.includes('.mp3')) {
-                  fileExtension = 'mp3';
-                } else if (urlLower.includes('.wav')) {
-                  fileExtension = 'wav';
-                } else if (urlLower.includes('.ogg')) {
-                  fileExtension = 'ogg';
-                } else if (urlLower.includes('.m4a') || urlLower.includes('.mp4')) {
-                  fileExtension = 'm4a';
-                } else if (audioBlob.type) {
-                  // Try to determine from MIME type
-                  if (audioBlob.type.includes('mp3')) {
+                
+                // First, try to extract from filename
+                if (audioFilename) {
+                  const filenameLower = audioFilename.toLowerCase();
+                  const extMatch = filenameLower.match(/\.(m4a|mp3|wav|ogg|aac|mp4)$/);
+                  if (extMatch) {
+                    fileExtension = extMatch[1] === 'mp4' ? 'm4a' : extMatch[1]; // mp4 audio is typically m4a
+                  }
+                }
+                
+                // If not found in filename, check URL
+                if (fileExtension === 'm4a') {
+                  const urlLower = audioUrl.toLowerCase();
+                  if (urlLower.includes('.mp3')) {
                     fileExtension = 'mp3';
-                  } else if (audioBlob.type.includes('wav')) {
+                  } else if (urlLower.includes('.wav')) {
                     fileExtension = 'wav';
-                  } else if (audioBlob.type.includes('ogg')) {
+                  } else if (urlLower.includes('.ogg')) {
                     fileExtension = 'ogg';
-                  } else if (audioBlob.type.includes('m4a') || audioBlob.type.includes('mp4') || audioBlob.type.includes('x-m4a')) {
+                  } else if (urlLower.includes('.aac')) {
+                    fileExtension = 'aac';
+                  } else if (urlLower.includes('.m4a')) {
+                    fileExtension = 'm4a';
+                  } else if (urlLower.includes('.mp4')) {
+                    fileExtension = 'm4a'; // mp4 audio files are typically m4a
+                  }
+                }
+                
+                // If still default, check MIME type
+                if (fileExtension === 'm4a' && audioBlob.type) {
+                  const mimeType = audioBlob.type.toLowerCase();
+                  if (mimeType.includes('mp3') || mimeType.includes('mpeg')) {
+                    fileExtension = 'mp3';
+                  } else if (mimeType.includes('wav') || mimeType.includes('wave')) {
+                    fileExtension = 'wav';
+                  } else if (mimeType.includes('ogg')) {
+                    fileExtension = 'ogg';
+                  } else if (mimeType.includes('aac')) {
+                    fileExtension = 'aac';
+                  } else if (mimeType.includes('m4a') || mimeType.includes('mp4') || mimeType.includes('x-m4a')) {
                     fileExtension = 'm4a';
                   }
                 }
                 
+                console.log(`Detected file extension: ${fileExtension}, MIME type: ${audioBlob.type}`);
                 const audioFile = blobToFile(audioBlob, `${columnName}_${rowIndex + 1}.${fileExtension}`);
 
                 // Upload to S3

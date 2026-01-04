@@ -138,10 +138,19 @@ exports.handler = async (event) => {
     return new Promise((resolve, reject) => {
       const protocol = url.protocol === 'https:' ? https : http;
       const req = protocol.request(options, (res) => {
-        let data = '';
+        // Use Buffer array for binary data, string for text data
+        const isBinary = !!downloadUrl;
+        const chunks = isBinary ? [] : [];
+        let textData = '';
 
         res.on('data', (chunk) => {
-          data += chunk;
+          if (isBinary) {
+            // Collect binary chunks as Buffer
+            chunks.push(Buffer.from(chunk));
+          } else {
+            // Collect text chunks as string
+            textData += chunk.toString('utf8');
+          }
         });
 
         res.on('end', () => {
@@ -152,7 +161,13 @@ exports.handler = async (event) => {
 
           // For binary data (audio files), encode as base64
           if (downloadUrl) {
-            const base64Data = Buffer.from(data, 'binary').toString('base64');
+            // Concatenate all binary chunks
+            const binaryBuffer = Buffer.concat(chunks);
+            // Encode as base64 for Lambda response
+            const base64Data = binaryBuffer.toString('base64');
+            
+            console.log(`Audio download: ${binaryBuffer.length} bytes, content-type: ${contentType}`);
+            
             resolve({
               statusCode: res.statusCode,
               headers: {
@@ -170,7 +185,7 @@ exports.handler = async (event) => {
                 ...corsHeaders,
                 'Content-Type': contentType,
               },
-              body: data,
+              body: textData,
             });
           }
         });
