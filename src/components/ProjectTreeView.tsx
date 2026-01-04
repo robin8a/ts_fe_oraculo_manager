@@ -329,7 +329,38 @@ export const ProjectTreeView: React.FC<ProjectTreeViewProps> = ({ projects, load
                                                   </span>
                                                 )}
                                                 {rawData.valueString && isAudio && (
-                                                  <span className="mr-2 text-blue-600">Audio file</span>
+                                                  <button
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      handleDownloadAudio(
+                                                        rawData.id,
+                                                        rawData.valueString!,
+                                                        rawData.name || 'audio'
+                                                      );
+                                                    }}
+                                                    disabled={isDownloading}
+                                                    className={`
+                                                      mr-2 inline-flex items-center gap-1
+                                                      transition-colors
+                                                      ${isDownloading
+                                                        ? 'text-gray-400 cursor-not-allowed'
+                                                        : 'text-blue-600 hover:text-blue-800 hover:underline cursor-pointer'
+                                                      }
+                                                    `}
+                                                    title="Click to download audio file"
+                                                  >
+                                                    {isDownloading ? (
+                                                      <>
+                                                        <div className="animate-spin rounded-full h-2 w-2 border-b-2 border-blue-600"></div>
+                                                        <span>Downloading...</span>
+                                                      </>
+                                                    ) : (
+                                                      <>
+                                                        <ArrowDownTrayIcon className="h-3 w-3" />
+                                                        <span>Audio file - Click to download</span>
+                                                      </>
+                                                    )}
+                                                  </button>
                                                 )}
                                                 {rawData.start_date && (
                                                   <span className="mr-2">
