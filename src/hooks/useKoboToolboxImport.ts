@@ -3,7 +3,7 @@ import { API } from 'aws-amplify';
 import type { ImportProgress, ImportResult, Feature, Project } from '../types/koboToolbox';
 import { fetchData, downloadAudioFile, isAudioColumn } from '../services/koboToolboxApi';
 import { uploadAudioFile, blobToFile } from '../services/storageService';
-import { listProjects, listFeatures } from '../graphql/queries';
+import { listProjects, listFeatures, listRawData } from '../graphql/queries';
 import { createProject, createFeature, createTree, createRawData } from '../graphql/mutations';
 
 export interface UseKoboToolboxImportResult {
@@ -12,6 +12,7 @@ export interface UseKoboToolboxImportResult {
     apiKey: string;
     projectUid: string;
     format: 'json' | 'csv';
+    maxRows?: number;
   }) => Promise<ImportResult>;
   progress: ImportProgress;
   loading: boolean;
@@ -102,12 +103,14 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
     apiKey: string;
     projectUid: string;
     format: 'json' | 'csv';
+    maxRows?: number;
   }): Promise<ImportResult> => {
     setLoading(true);
     setError(null);
     const result: ImportResult = {
       success: false,
       treesCreated: 0,
+      rowsSkipped: 0,
       featuresCreated: 0,
       featuresSkipped: 0,
       rawDataCreated: 0,
@@ -137,14 +140,21 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
         throw new Error('No data found in KoboToolbox project');
       }
 
+      // Apply row limit if specified
+      const rowsToProcess = config.maxRows ? rows.slice(0, config.maxRows) : rows;
+      const totalRowsAvailable = rows.length;
+      const limitMessage = config.maxRows 
+        ? ` (limited to first ${config.maxRows} of ${totalRowsAvailable} total rows)`
+        : '';
+
       updateProgress({
         stage: 'parsing',
-        message: `Parsed ${rows.length} rows`,
-        totalRows: rows.length,
+        message: `Parsed ${rowsToProcess.length} rows${limitMessage}`,
+        totalRows: rowsToProcess.length,
         progress: 10,
         currentStep: 'Parsing data',
         stepNumber: 1,
-        totalSteps: 5,
+        totalSteps: 6,
       });
 
       // Step 2: Find or create project
@@ -154,14 +164,14 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
         progress: 15,
         currentStep: 'Setting up project',
         stepNumber: 2,
-        totalSteps: 5,
+        totalSteps: 6,
       });
       
       const projectId = await findOrCreateProject('Levantamiento Info Parcelas');
       result.projectId = projectId;
 
       // Step 3: Get all column names from first row
-      const firstRow = rows[0];
+      const firstRow = rowsToProcess[0];
       const columnNames = Object.keys(firstRow).filter(
         key => !key.startsWith('_') && key !== '_id' && key !== '_uuid' && key !== '_submission_time'
       );
@@ -172,7 +182,7 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
         progress: 20,
         currentStep: 'Creating features',
         stepNumber: 3,
-        totalSteps: 5,
+        totalSteps: 6,
         totalFeatures: columnNames.length,
         featuresProcessed: 0,
       });
@@ -190,14 +200,14 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
           progress: 20 + (featureIndex / columnNames.length) * 10,
           currentStep: 'Creating features',
           stepNumber: 3,
-          totalSteps: 5,
+          totalSteps: 6,
           currentFeature: columnName,
           featuresProcessed: featureIndex,
           totalFeatures: columnNames.length,
         });
         // Determine if this column is numeric by checking sample values
         let isFloat = false;
-        for (const row of rows.slice(0, 10)) { // Check first 10 rows
+        for (const row of rowsToProcess.slice(0, 10)) { // Check first 10 rows
           const value = row[columnName];
           if (value !== null && value !== undefined && value !== '') {
             isFloat = isNumeric(value);
@@ -222,7 +232,7 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
             progress: 20 + ((featureIndex + 1) / columnNames.length) * 10,
             currentStep: 'Creating features',
             stepNumber: 3,
-            totalSteps: 5,
+            totalSteps: 6,
             featuresProcessed: featureIndex + 1,
             totalFeatures: columnNames.length,
           });
@@ -231,31 +241,122 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
         }
       }
 
+      // Step 4.5: Create or find special feature for storing KoboToolbox _id
+      updateProgress({
+        stage: 'processing',
+        message: 'Setting up duplicate detection...',
+        progress: 30,
+        currentStep: 'Setting up duplicate detection',
+        stepNumber: 4,
+        totalSteps: 6,
+      });
+
+      const KOBOTOOLBOX_ID_FEATURE_NAME = '_kobotoolbox_id';
+      let kobotoolboxIdFeatureId: string;
+      try {
+        const { id } = await findOrCreateFeature(KOBOTOOLBOX_ID_FEATURE_NAME, false);
+        kobotoolboxIdFeatureId = id;
+      } catch (err: any) {
+        throw new Error(`Failed to create ${KOBOTOOLBOX_ID_FEATURE_NAME} feature: ${err.message}`);
+      }
+
+      // Step 4.6: Query existing processed _id values
+      updateProgress({
+        stage: 'processing',
+        message: 'Checking for already processed rows...',
+        progress: 32,
+        currentStep: 'Checking duplicates',
+        stepNumber: 4,
+        totalSteps: 6,
+      });
+
+      const processedIds = new Set<string>();
+      try {
+        // Query all RawData entries for the _kobotoolbox_id feature
+        let nextToken: string | null = null;
+        do {
+          const rawDataResponse: any = await API.graphql({
+            query: listRawData,
+            variables: {
+              filter: {
+                featureRawDatasId: { eq: kobotoolboxIdFeatureId },
+              },
+              limit: 1000,
+              nextToken,
+            },
+          });
+
+          const rawDataItems = rawDataResponse.data?.listRawData?.items || [];
+          for (const item of rawDataItems) {
+            if (item.valueString) {
+              processedIds.add(item.valueString);
+            }
+          }
+
+          nextToken = rawDataResponse.data?.listRawData?.nextToken || null;
+        } while (nextToken);
+
+        updateProgress({
+          stage: 'processing',
+          message: `Found ${processedIds.size} already processed rows. Starting row processing...`,
+          progress: 35,
+          currentStep: 'Processing rows',
+          stepNumber: 5,
+          totalSteps: 6,
+        });
+      } catch (err: any) {
+        console.warn('Failed to query existing processed IDs, continuing without duplicate check:', err);
+        result.errors.push(`Warning: Could not check for duplicates: ${err.message}`);
+      }
+
       // Step 5: Process each row (create Tree and RawData entries)
       updateProgress({
         stage: 'processing',
-        message: `Starting to process ${rows.length} rows...`,
-        progress: 30,
+        message: `Starting to process ${rowsToProcess.length} rows...`,
+        progress: 35,
         currentStep: 'Processing rows',
-        stepNumber: 4,
-        totalSteps: 5,
+        stepNumber: 5,
+        totalSteps: 6,
         treesProcessed: 0,
         rawDataProcessed: 0,
         audioFilesProcessed: 0,
+        rowsSkipped: 0,
       });
 
-      for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
-        const row = rows[rowIndex];
+      for (let rowIndex = 0; rowIndex < rowsToProcess.length; rowIndex++) {
+        const row = rowsToProcess[rowIndex];
+        
+        // Check if this row has already been processed
+        const rowId = row._id;
+        if (rowId && processedIds.has(String(rowId))) {
+          result.rowsSkipped++;
+          updateProgress({
+            stage: 'processing',
+            message: `Skipping row ${rowIndex + 1} of ${rowsToProcess.length} (already processed: _id=${rowId})...`,
+            currentRow: rowIndex + 1,
+            totalRows: rowsToProcess.length,
+            rowsSkipped: result.rowsSkipped,
+            progress: 35 + ((rowIndex + 1) / rowsToProcess.length) * 60,
+            currentStep: 'Processing rows',
+            stepNumber: 5,
+            totalSteps: 6,
+            treesProcessed: result.treesCreated,
+            rawDataProcessed: result.rawDataCreated,
+            audioFilesProcessed: result.audioFilesUploaded,
+          });
+          continue; // Skip this row
+        }
         
         updateProgress({
           stage: 'processing',
-          message: `Processing row ${rowIndex + 1} of ${rows.length} (Tree ${rowIndex + 1})...`,
+          message: `Processing row ${rowIndex + 1} of ${rowsToProcess.length}${limitMessage}...`,
           currentRow: rowIndex + 1,
-          totalRows: rows.length,
-          progress: 30 + (rowIndex / rows.length) * 60,
+          totalRows: rowsToProcess.length,
+          rowsSkipped: result.rowsSkipped,
+          progress: 35 + (rowIndex / rowsToProcess.length) * 60,
           currentStep: 'Processing rows',
-          stepNumber: 4,
-          totalSteps: 5,
+          stepNumber: 5,
+          totalSteps: 6,
           treesProcessed: result.treesCreated,
           rawDataProcessed: result.rawDataCreated,
           audioFilesProcessed: result.audioFilesUploaded,
@@ -368,8 +469,8 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
                   stage: 'uploading',
                   message: `Uploading audio file ${result.audioFilesUploaded + 1} to S3...`,
                   currentStep: 'Uploading audio',
-                  stepNumber: 5,
-                  totalSteps: 5,
+                  stepNumber: 6,
+                  totalSteps: 6,
                   audioFilesProcessed: result.audioFilesUploaded,
                 });
 
@@ -413,6 +514,28 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
               } catch (err: any) {
                 result.errors.push(`Failed to create RawData for ${columnName} in row ${rowIndex + 1}: ${err.message}`);
               }
+            }
+          }
+
+          // Store the KoboToolbox _id in RawData for duplicate detection
+          if (rowId) {
+            try {
+              await API.graphql({
+                query: createRawData,
+                variables: {
+                  input: {
+                    name: KOBOTOOLBOX_ID_FEATURE_NAME,
+                    valueString: String(rowId),
+                    treeRawDataId: treeId,
+                    featureRawDatasId: kobotoolboxIdFeatureId,
+                  },
+                },
+              });
+              result.rawDataCreated++;
+              // Add to processedIds set to avoid duplicates within the same import session
+              processedIds.add(String(rowId));
+            } catch (err: any) {
+              result.errors.push(`Failed to store _id for row ${rowIndex + 1}: ${err.message}`);
             }
           }
         } catch (err: any) {

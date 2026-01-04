@@ -22,6 +22,7 @@ export interface ImportProgress {
   message: string;
   currentRow?: number;
   totalRows?: number;
+  rowsSkipped?: number;
   currentFeature?: string;
   progress?: number; // 0-100
   currentStep?: string;
@@ -38,6 +39,7 @@ export interface ImportResult {
   success: boolean;
   projectId?: string;
   treesCreated: number;
+  rowsSkipped: number;
   featuresCreated: number;
   featuresSkipped: number;
   rawDataCreated: number;

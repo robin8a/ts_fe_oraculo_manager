@@ -15,6 +15,7 @@ export const KoboToolboxImport: React.FC = () => {
     apiKey: 'fddbfef8ae0b3d8ad07891b8dc8e4cc7330e0f29',
     projectUid: '',
     format: 'json' as 'json' | 'csv',
+    maxRows: '' as string | number,
   });
 
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
@@ -32,6 +33,12 @@ export const KoboToolboxImport: React.FC = () => {
     if (!formData.projectUid.trim()) {
       errors.projectUid = 'Project UID is required';
     }
+    if (formData.maxRows && formData.maxRows !== '') {
+      const maxRowsNum = Number(formData.maxRows);
+      if (isNaN(maxRowsNum) || maxRowsNum < 1 || !Number.isInteger(maxRowsNum)) {
+        errors.maxRows = 'Max rows must be a positive integer';
+      }
+    }
 
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
@@ -45,17 +52,21 @@ export const KoboToolboxImport: React.FC = () => {
     }
 
     setImportResult(null);
+    const maxRows = formData.maxRows && formData.maxRows !== '' 
+      ? Number(formData.maxRows) 
+      : undefined;
     const result = await importData({
       serverUrl: formData.serverUrl,
       apiKey: formData.apiKey,
       projectUid: formData.projectUid,
       format: formData.format,
+      maxRows,
     });
 
     setImportResult(result);
   };
 
-  const handleChange = (field: string, value: string | 'json' | 'csv') => {
+  const handleChange = (field: string, value: string | 'json' | 'csv' | number) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
     if (formErrors[field]) {
       setFormErrors((prev) => {
@@ -122,6 +133,7 @@ export const KoboToolboxImport: React.FC = () => {
           <p className="text-green-800 font-medium">Import Completed Successfully!</p>
           <div className="mt-2 text-sm text-green-700 space-y-1">
             <p>Trees Created: {importResult.treesCreated}</p>
+            <p>Rows Skipped (duplicates): {importResult.rowsSkipped || 0}</p>
             <p>Features Created: {importResult.featuresCreated}</p>
             <p>Features Skipped (already existed): {importResult.featuresSkipped}</p>
             <p>RawData Entries Created: {importResult.rawDataCreated}</p>
@@ -201,6 +213,13 @@ export const KoboToolboxImport: React.FC = () => {
                 <span className="font-medium text-gray-900">
                   {progress.currentRow} / {progress.totalRows}
                 </span>
+              </div>
+            )}
+            
+            {progress.rowsSkipped !== undefined && progress.rowsSkipped > 0 && (
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600">Rows skipped (duplicates):</span>
+                <span className="font-medium text-yellow-600">{progress.rowsSkipped}</span>
               </div>
             )}
             
@@ -314,6 +333,19 @@ export const KoboToolboxImport: React.FC = () => {
                   <span className="ml-2 text-sm text-gray-700">CSV</span>
                 </label>
               </div>
+            </div>
+
+            <div className="md:col-span-2">
+              <Input
+                label="Max Rows to Process"
+                type="number"
+                value={formData.maxRows}
+                onChange={(e) => handleChange('maxRows', e.target.value)}
+                error={formErrors.maxRows}
+                placeholder="Leave empty to process all rows"
+                helperText="Process only the first N rows (e.g., 100). Leave empty to process all rows."
+                min="1"
+              />
             </div>
           </div>
 
