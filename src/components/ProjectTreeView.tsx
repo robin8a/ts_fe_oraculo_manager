@@ -5,8 +5,10 @@ import {
   FolderIcon,
   DocumentIcon,
   CubeIcon,
+  ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline';
 import type { ProjectWithTrees, TreeWithFeatures, FeatureInfo } from '../types/projectTreeFeature';
+import { downloadAudioFileFromS3, isAudioS3Url } from '../services/storageService';
 
 interface ProjectTreeViewProps {
   projects: ProjectWithTrees[];
@@ -17,6 +19,7 @@ export const ProjectTreeView: React.FC<ProjectTreeViewProps> = ({ projects, load
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
   const [expandedTrees, setExpandedTrees] = useState<Set<string>>(new Set());
   const [expandedFeatures, setExpandedFeatures] = useState<Set<string>>(new Set());
+  const [downloadingFiles, setDownloadingFiles] = useState<Set<string>>(new Set());
 
   const toggleProject = (projectId: string) => {
     const newExpanded = new Set(expandedProjects);
@@ -47,6 +50,66 @@ export const ProjectTreeView: React.FC<ProjectTreeViewProps> = ({ projects, load
       newExpanded.add(key);
     }
     setExpandedFeatures(newExpanded);
+  };
+
+  const handleDownloadAudio = async (rawDataId: string, s3Url: string, rawDataName: string) => {
+    // Prevent multiple simultaneous downloads of the same file
+    if (downloadingFiles.has(rawDataId)) {
+      return;
+    }
+
+    try {
+      setDownloadingFiles((prev) => new Set(prev).add(rawDataId));
+      console.log('Starting download for:', { rawDataId, s3Url, rawDataName });
+
+      // Download the file from S3
+      const blob = await downloadAudioFileFromS3(s3Url);
+      console.log('Downloaded blob, size:', blob.size, 'type:', blob.type);
+
+      if (!blob || blob.size === 0) {
+        throw new Error('Downloaded file is empty');
+      }
+
+      // Extract filename from S3 URL or use rawData name
+      let fileName = rawDataName || 'audio';
+      const urlMatch = s3Url.match(/\/([^/]+\.(mp3|wav|ogg|m4a|aac|flac))$/i);
+      if (urlMatch && urlMatch[1]) {
+        fileName = urlMatch[1];
+      } else if (!fileName.endsWith('.mp3') && !fileName.endsWith('.wav') && !fileName.endsWith('.ogg')) {
+        fileName = `${fileName}.mp3`;
+      }
+
+      console.log('Creating download link with filename:', fileName);
+
+      // Create a temporary download link
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      
+      // Trigger download
+      console.log('Triggering download...');
+      link.click();
+
+      // Clean up after a short delay to ensure download starts
+      setTimeout(() => {
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        console.log('Download link cleaned up');
+      }, 100);
+    } catch (error: any) {
+      console.error('Error downloading audio file:', error);
+      const errorMessage = error?.message || error?.toString() || 'Unknown error';
+      alert(`Failed to download audio file: ${errorMessage}`);
+    } finally {
+      setDownloadingFiles((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(rawDataId);
+        return newSet;
+      });
+    }
   };
 
   if (loading) {
@@ -211,40 +274,78 @@ export const ProjectTreeView: React.FC<ProjectTreeViewProps> = ({ projects, load
                                   {/* RawData Level */}
                                   {isFeatureExpanded && hasRawData && (
                                     <div className="ml-12 mt-1 space-y-1">
-                                      {feature.rawData.map((rawData) => (
-                                        <div
-                                          key={rawData.id}
-                                          className="flex items-start px-3 py-2 rounded-md hover:bg-gray-50 transition-colors"
-                                        >
-                                          <div className="flex-1 min-w-0">
-                                            <div className="text-xs text-gray-600 truncate">
-                                              {rawData.name || 'Unnamed'}
-                                            </div>
-                                            <div className="text-xs text-gray-500 mt-0.5">
-                                              {rawData.valueFloat !== null && rawData.valueFloat !== undefined && (
-                                                <span className="mr-2">Value: {rawData.valueFloat}</span>
-                                              )}
-                                              {rawData.valueString && (
-                                                <span className="mr-2">
-                                                  Value: {rawData.valueString.length > 50 
-                                                    ? `${rawData.valueString.substring(0, 50)}...` 
-                                                    : rawData.valueString}
-                                                </span>
-                                              )}
-                                              {rawData.start_date && (
-                                                <span className="mr-2">
-                                                  Start: {new Date(rawData.start_date).toLocaleDateString()}
-                                                </span>
-                                              )}
-                                              {rawData.end_date && (
-                                                <span>
-                                                  End: {new Date(rawData.end_date).toLocaleDateString()}
-                                                </span>
-                                              )}
+                                      {feature.rawData.map((rawData) => {
+                                        const isAudio = isAudioS3Url(rawData.valueString);
+                                        const isDownloading = downloadingFiles.has(rawData.id);
+
+                                        return (
+                                          <div
+                                            key={rawData.id}
+                                            className="flex items-start px-3 py-2 rounded-md hover:bg-gray-50 transition-colors"
+                                          >
+                                            <div className="flex-1 min-w-0">
+                                              <div className="flex items-center gap-2">
+                                                <div className="text-xs text-gray-600 truncate flex-1">
+                                                  {rawData.name || 'Unnamed'}
+                                                </div>
+                                                {isAudio && rawData.valueString && (
+                                                  <button
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      handleDownloadAudio(
+                                                        rawData.id,
+                                                        rawData.valueString!,
+                                                        rawData.name || 'audio'
+                                                      );
+                                                    }}
+                                                    disabled={isDownloading}
+                                                    className={`
+                                                      flex items-center justify-center p-1 rounded
+                                                      transition-colors flex-shrink-0
+                                                      ${isDownloading
+                                                        ? 'text-gray-400 cursor-not-allowed'
+                                                        : 'text-blue-600 hover:text-blue-800 hover:bg-blue-50'
+                                                      }
+                                                    `}
+                                                    title="Download audio file"
+                                                  >
+                                                    {isDownloading ? (
+                                                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
+                                                    ) : (
+                                                      <ArrowDownTrayIcon className="h-4 w-4" />
+                                                    )}
+                                                  </button>
+                                                )}
+                                              </div>
+                                              <div className="text-xs text-gray-500 mt-0.5">
+                                                {rawData.valueFloat !== null && rawData.valueFloat !== undefined && (
+                                                  <span className="mr-2">Value: {rawData.valueFloat}</span>
+                                                )}
+                                                {rawData.valueString && !isAudio && (
+                                                  <span className="mr-2">
+                                                    Value: {rawData.valueString.length > 50 
+                                                      ? `${rawData.valueString.substring(0, 50)}...` 
+                                                      : rawData.valueString}
+                                                  </span>
+                                                )}
+                                                {rawData.valueString && isAudio && (
+                                                  <span className="mr-2 text-blue-600">Audio file</span>
+                                                )}
+                                                {rawData.start_date && (
+                                                  <span className="mr-2">
+                                                    Start: {new Date(rawData.start_date).toLocaleDateString()}
+                                                  </span>
+                                                )}
+                                                {rawData.end_date && (
+                                                  <span>
+                                                    End: {new Date(rawData.end_date).toLocaleDateString()}
+                                                  </span>
+                                                )}
+                                              </div>
                                             </div>
                                           </div>
-                                        </div>
-                                      ))}
+                                        );
+                                      })}
                                     </div>
                                   )}
                                 </div>
