@@ -12,7 +12,32 @@ export async function uploadAudioFile(
   try {
     // Generate unique file path
     const timestamp = Date.now();
-    const extension = file instanceof File ? file.name.split('.').pop() || 'mp3' : 'mp3';
+    // Extract extension from file name, default to m4a (common KoboToolbox format)
+    let extension = 'm4a';
+    let contentType = 'audio/mp4'; // MIME type for .m4a files
+    
+    if (file instanceof File) {
+      const fileNameParts = file.name.split('.');
+      if (fileNameParts.length > 1) {
+        extension = fileNameParts.pop()?.toLowerCase() || 'm4a';
+      }
+      // Use the file's MIME type if available, otherwise determine from extension
+      if (file.type && file.type !== 'application/octet-stream') {
+        contentType = file.type;
+      } else {
+        // Map extension to MIME type
+        const mimeTypes: Record<string, string> = {
+          'm4a': 'audio/mp4',
+          'mp4': 'audio/mp4',
+          'mp3': 'audio/mpeg',
+          'wav': 'audio/wav',
+          'ogg': 'audio/ogg',
+          'aac': 'audio/aac',
+        };
+        contentType = mimeTypes[extension] || 'audio/mp4';
+      }
+    }
+    
     const sanitizedFeatureName = featureName.replace(/[^a-zA-Z0-9]/g, '_');
     const fileName = `${timestamp}.${extension}`;
     // Don't include 'public/' prefix - Amplify Storage adds it automatically when level is 'public'
@@ -23,13 +48,15 @@ export async function uploadAudioFile(
       size: file.size,
       type: file instanceof File ? file.type : 'Blob',
       name: file instanceof File ? file.name : 'blob',
+      extension,
+      contentType,
     });
 
     // Upload to S3 using Storage.put (Amplify v5 API)
     // Use 'protected' level for authenticated users (more secure)
     // Files are accessible to the authenticated user who uploaded them
     const result = await Storage.put(key, file, {
-      contentType: file instanceof File ? file.type : 'audio/mpeg',
+      contentType: contentType,
       level: 'protected', // Protected level requires authentication and is more secure
     });
     console.log('S3 upload result:', result);
@@ -93,9 +120,24 @@ export async function uploadAudioFile(
 
 /**
  * Convert Blob to File for upload
+ * Preserves the original MIME type or determines it from the file extension
  */
 export function blobToFile(blob: Blob, fileName: string): File {
-  return new File([blob], fileName, { type: blob.type });
+  // Determine MIME type from file extension if blob type is not set or is generic
+  let mimeType = blob.type;
+  if (!mimeType || mimeType === 'application/octet-stream') {
+    const extension = fileName.split('.').pop()?.toLowerCase() || '';
+    const mimeTypes: Record<string, string> = {
+      'm4a': 'audio/mp4',
+      'mp4': 'audio/mp4',
+      'mp3': 'audio/mpeg',
+      'wav': 'audio/wav',
+      'ogg': 'audio/ogg',
+      'aac': 'audio/aac',
+    };
+    mimeType = mimeTypes[extension] || 'audio/mp4'; // Default to m4a format
+  }
+  return new File([blob], fileName, { type: mimeType });
 }
 
 /**

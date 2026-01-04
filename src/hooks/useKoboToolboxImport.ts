@@ -462,7 +462,32 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
 
                 // Download audio file (pass serverUrl for URL construction if needed)
                 const audioBlob = await downloadAudioFile(audioUrl, config.apiKey, config.serverUrl);
-                const audioFile = blobToFile(audioBlob, `${columnName}_${rowIndex + 1}.mp3`);
+                
+                // Detect original file extension from URL or MIME type
+                let fileExtension = 'm4a'; // Default to m4a for KoboToolbox audio
+                const urlLower = audioUrl.toLowerCase();
+                if (urlLower.includes('.mp3')) {
+                  fileExtension = 'mp3';
+                } else if (urlLower.includes('.wav')) {
+                  fileExtension = 'wav';
+                } else if (urlLower.includes('.ogg')) {
+                  fileExtension = 'ogg';
+                } else if (urlLower.includes('.m4a') || urlLower.includes('.mp4')) {
+                  fileExtension = 'm4a';
+                } else if (audioBlob.type) {
+                  // Try to determine from MIME type
+                  if (audioBlob.type.includes('mp3')) {
+                    fileExtension = 'mp3';
+                  } else if (audioBlob.type.includes('wav')) {
+                    fileExtension = 'wav';
+                  } else if (audioBlob.type.includes('ogg')) {
+                    fileExtension = 'ogg';
+                  } else if (audioBlob.type.includes('m4a') || audioBlob.type.includes('mp4') || audioBlob.type.includes('x-m4a')) {
+                    fileExtension = 'm4a';
+                  }
+                }
+                
+                const audioFile = blobToFile(audioBlob, `${columnName}_${rowIndex + 1}.${fileExtension}`);
 
                 // Upload to S3
                 updateProgress({
