@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { API } from 'aws-amplify';
 import { listProjects, listTrees, listRawData, listFeatures } from '../graphql/queries';
-import type { ProjectWithTrees, TreeWithFeatures, FeatureInfo } from '../types/projectTreeFeature';
+import type { ProjectWithTrees, TreeWithFeatures, FeatureInfo, RawDataInfo } from '../types/projectTreeFeature';
 
 export interface UseProjectTreeFeatureResult {
   projects: ProjectWithTrees[];
@@ -27,7 +27,7 @@ export function useProjectTreeFeature(treeLimit?: number): UseProjectTreeFeature
       const allFeatures = featuresResponse.data?.listFeatures?.items || [];
       
       // Create a map of feature ID to feature data for quick lookup
-      const featuresMap = new Map<string, FeatureInfo>();
+      const featuresMap = new Map<string, Omit<FeatureInfo, 'rawData'>>();
       allFeatures.forEach((feature: any) => {
         featuresMap.set(feature.id, {
           id: feature.id,
@@ -83,14 +83,36 @@ export function useProjectTreeFeature(treeLimit?: number): UseProjectTreeFeature
 
               const rawDataItems = rawDataResponse.data?.listRawData?.items || [];
 
-              // Extract unique Features from RawData entries using the features map
-              const featureMap = new Map<string, FeatureInfo>();
+              // Group RawData entries by featureId
+              const rawDataByFeature = new Map<string, RawDataInfo[]>();
               rawDataItems.forEach((rawData: any) => {
-                if (rawData.featureRawDatasId && featuresMap.has(rawData.featureRawDatasId)) {
+                if (rawData.featureRawDatasId) {
                   const featureId = rawData.featureRawDatasId;
-                  if (!featureMap.has(featureId)) {
-                    featureMap.set(featureId, featuresMap.get(featureId)!);
+                  if (!rawDataByFeature.has(featureId)) {
+                    rawDataByFeature.set(featureId, []);
                   }
+                  rawDataByFeature.get(featureId)!.push({
+                    id: rawData.id,
+                    name: rawData.name || null,
+                    valueFloat: rawData.valueFloat || null,
+                    valueString: rawData.valueString || null,
+                    start_date: rawData.start_date || null,
+                    end_date: rawData.end_date || null,
+                    createdAt: rawData.createdAt || null,
+                    updatedAt: rawData.updatedAt || null,
+                  });
+                }
+              });
+
+              // Create FeatureInfo objects with their associated RawData
+              const features: FeatureInfo[] = [];
+              rawDataByFeature.forEach((rawDataArray, featureId) => {
+                if (featuresMap.has(featureId)) {
+                  const featureBase = featuresMap.get(featureId)!;
+                  features.push({
+                    ...featureBase,
+                    rawData: rawDataArray,
+                  });
                 }
               });
 
@@ -102,7 +124,7 @@ export function useProjectTreeFeature(treeLimit?: number): UseProjectTreeFeature
                 templateTreesId: tree.templateTreesId || null,
                 createdAt: tree.createdAt || null,
                 updatedAt: tree.updatedAt || null,
-                features: Array.from(featureMap.values()),
+                features: features,
               };
             })
           );

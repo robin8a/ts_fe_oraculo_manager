@@ -16,6 +16,7 @@ interface ProjectTreeViewProps {
 export const ProjectTreeView: React.FC<ProjectTreeViewProps> = ({ projects, loading }) => {
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
   const [expandedTrees, setExpandedTrees] = useState<Set<string>>(new Set());
+  const [expandedFeatures, setExpandedFeatures] = useState<Set<string>>(new Set());
 
   const toggleProject = (projectId: string) => {
     const newExpanded = new Set(expandedProjects);
@@ -35,6 +36,17 @@ export const ProjectTreeView: React.FC<ProjectTreeViewProps> = ({ projects, load
       newExpanded.add(treeId);
     }
     setExpandedTrees(newExpanded);
+  };
+
+  const toggleFeature = (featureId: string, treeId: string) => {
+    const key = `${treeId}-${featureId}`;
+    const newExpanded = new Set(expandedFeatures);
+    if (newExpanded.has(key)) {
+      newExpanded.delete(key);
+    } else {
+      newExpanded.add(key);
+    }
+    setExpandedFeatures(newExpanded);
   };
 
   if (loading) {
@@ -148,27 +160,96 @@ export const ProjectTreeView: React.FC<ProjectTreeViewProps> = ({ projects, load
                         {/* Features Level */}
                         {isTreeExpanded && hasFeatures && (
                           <div className="ml-8 mt-1 space-y-1">
-                            {tree.features.map((feature) => (
-                              <div
-                                key={feature.id}
-                                className="flex items-center px-3 py-2 rounded-md hover:bg-gray-50 transition-colors"
-                              >
-                                <CubeIcon className="h-4 w-4 text-purple-500 mr-2 flex-shrink-0" />
-                                <div className="flex-1 min-w-0">
-                                  <div className="text-sm text-gray-700 truncate">
-                                    {feature.name}
+                            {tree.features.map((feature) => {
+                              const featureKey = `${tree.id}-${feature.id}`;
+                              const isFeatureExpanded = expandedFeatures.has(featureKey);
+                              const hasRawData = feature.rawData && feature.rawData.length > 0;
+
+                              return (
+                                <div key={feature.id} className="select-none">
+                                  <div
+                                    className={`
+                                      flex items-center px-3 py-2 rounded-md transition-colors
+                                      ${hasRawData ? 'cursor-pointer' : ''}
+                                      ${isFeatureExpanded ? 'bg-gray-50' : 'hover:bg-gray-50'}
+                                    `}
+                                    onClick={() => hasRawData && toggleFeature(feature.id, tree.id)}
+                                  >
+                                    <div className="flex items-center flex-1 min-w-0">
+                                      {hasRawData ? (
+                                        isFeatureExpanded ? (
+                                          <ChevronDownIcon className="h-3 w-3 text-gray-500 mr-2 flex-shrink-0" />
+                                        ) : (
+                                          <ChevronRightIcon className="h-3 w-3 text-gray-500 mr-2 flex-shrink-0" />
+                                        )
+                                      ) : (
+                                        <div className="w-3 mr-2" />
+                                      )}
+                                      <CubeIcon className="h-4 w-4 text-purple-500 mr-2 flex-shrink-0" />
+                                      <div className="flex-1 min-w-0">
+                                        <div className="text-sm text-gray-700 truncate">
+                                          {feature.name}
+                                        </div>
+                                        <div className="text-xs text-gray-500">
+                                          {feature.feature_type && (
+                                            <span className="mr-2">Type: {feature.feature_type}</span>
+                                          )}
+                                          {feature.feature_group && (
+                                            <span className="mr-2">Group: {feature.feature_group}</span>
+                                          )}
+                                          {hasRawData && (
+                                            <span>
+                                              ({feature.rawData.length}{' '}
+                                              {feature.rawData.length === 1 ? 'raw data entry' : 'raw data entries'})
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
                                   </div>
-                                  <div className="text-xs text-gray-500">
-                                    {feature.feature_type && (
-                                      <span className="mr-2">Type: {feature.feature_type}</span>
-                                    )}
-                                    {feature.feature_group && (
-                                      <span>Group: {feature.feature_group}</span>
-                                    )}
-                                  </div>
+
+                                  {/* RawData Level */}
+                                  {isFeatureExpanded && hasRawData && (
+                                    <div className="ml-12 mt-1 space-y-1">
+                                      {feature.rawData.map((rawData) => (
+                                        <div
+                                          key={rawData.id}
+                                          className="flex items-start px-3 py-2 rounded-md hover:bg-gray-50 transition-colors"
+                                        >
+                                          <div className="flex-1 min-w-0">
+                                            <div className="text-xs text-gray-600 truncate">
+                                              {rawData.name || 'Unnamed'}
+                                            </div>
+                                            <div className="text-xs text-gray-500 mt-0.5">
+                                              {rawData.valueFloat !== null && rawData.valueFloat !== undefined && (
+                                                <span className="mr-2">Value: {rawData.valueFloat}</span>
+                                              )}
+                                              {rawData.valueString && (
+                                                <span className="mr-2">
+                                                  Value: {rawData.valueString.length > 50 
+                                                    ? `${rawData.valueString.substring(0, 50)}...` 
+                                                    : rawData.valueString}
+                                                </span>
+                                              )}
+                                              {rawData.start_date && (
+                                                <span className="mr-2">
+                                                  Start: {new Date(rawData.start_date).toLocaleDateString()}
+                                                </span>
+                                              )}
+                                              {rawData.end_date && (
+                                                <span>
+                                                  End: {new Date(rawData.end_date).toLocaleDateString()}
+                                                </span>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         )}
                       </div>

@@ -1,5 +1,16 @@
 // Types for Project Tree Feature drill-down hierarchy
 
+export interface RawDataInfo {
+  id: string;
+  name: string | null;
+  valueFloat: number | null;
+  valueString: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
 export interface FeatureInfo {
   id: string;
   name: string;
@@ -8,6 +19,7 @@ export interface FeatureInfo {
   description: string | null;
   default_value: number | null;
   is_float: boolean | null;
+  rawData: RawDataInfo[];
 }
 
 export interface TreeWithFeatures {
