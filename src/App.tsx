@@ -5,6 +5,14 @@ import { ModelAIList } from './pages/ModelAI/ModelAIList';
 import { ModelAICreate } from './pages/ModelAI/ModelAICreate';
 import { ModelAIEdit } from './pages/ModelAI/ModelAIEdit';
 import { ModelAIDetail } from './pages/ModelAI/ModelAIDetail';
+import { FeatureList } from './pages/Feature/FeatureList';
+import { FeatureCreate } from './pages/Feature/FeatureCreate';
+import { FeatureEdit } from './pages/Feature/FeatureEdit';
+import { FeatureDetail } from './pages/Feature/FeatureDetail';
+import { UnitOfMeasureList } from './pages/UnitOfMeasure/UnitOfMeasureList';
+import { UnitOfMeasureCreate } from './pages/UnitOfMeasure/UnitOfMeasureCreate';
+import { UnitOfMeasureEdit } from './pages/UnitOfMeasure/UnitOfMeasureEdit';
+import { UnitOfMeasureDetail } from './pages/UnitOfMeasure/UnitOfMeasureDetail';
 import { KoboToolboxImport } from './pages/KoboToolboxImport/KoboToolboxImport';
 import { Login } from './pages/Login/Login';
 import { ProjectTreeFeatureView } from './pages/ProjectTreeFeature/ProjectTreeFeatureView';
@@ -72,6 +80,14 @@ function App() {
                   <Route path="/modelai/create" element={<ModelAICreate />} />
                   <Route path="/modelai/:id" element={<ModelAIDetail />} />
                   <Route path="/modelai/:id/edit" element={<ModelAIEdit />} />
+                  <Route path="/features" element={<FeatureList />} />
+                  <Route path="/features/create" element={<FeatureCreate />} />
+                  <Route path="/features/:id" element={<FeatureDetail />} />
+                  <Route path="/features/:id/edit" element={<FeatureEdit />} />
+                  <Route path="/unitsofmeasure" element={<UnitOfMeasureList />} />
+                  <Route path="/unitsofmeasure/create" element={<UnitOfMeasureCreate />} />
+                  <Route path="/unitsofmeasure/:id" element={<UnitOfMeasureDetail />} />
+                  <Route path="/unitsofmeasure/:id/edit" element={<UnitOfMeasureEdit />} />
                   <Route path="/kobotoolbox/import" element={<KoboToolboxImport />} />
                   <Route path="/projects" element={<ProjectTreeFeatureView />} />
                   <Route path="/projects/delete" element={<DeleteProjectTreeFeature />} />

@@ -11,6 +11,8 @@ import {
   UserCircleIcon,
   FolderIcon,
   TrashIcon,
+  SparklesIcon,
+  ScaleIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../hooks/useAuth';
 
@@ -29,6 +31,24 @@ const navigation: NavItem[] = [
     children: [
       { name: 'List', href: '/modelai', icon: ListBulletIcon },
       { name: 'Create', href: '/modelai/create', icon: PlusCircleIcon },
+    ],
+  },
+  {
+    name: 'Features',
+    href: '/features',
+    icon: SparklesIcon,
+    children: [
+      { name: 'List', href: '/features', icon: ListBulletIcon },
+      { name: 'Create', href: '/features/create', icon: PlusCircleIcon },
+    ],
+  },
+  {
+    name: 'Units of Measure',
+    href: '/unitsofmeasure',
+    icon: ScaleIcon,
+    children: [
+      { name: 'List', href: '/unitsofmeasure', icon: ListBulletIcon },
+      { name: 'Create', href: '/unitsofmeasure/create', icon: PlusCircleIcon },
     ],
   },
   {
