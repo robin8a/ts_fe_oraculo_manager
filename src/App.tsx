@@ -21,6 +21,10 @@ import { TemplateFeatureList } from './pages/TemplateFeature/TemplateFeatureList
 import { TemplateFeatureCreate } from './pages/TemplateFeature/TemplateFeatureCreate';
 import { TemplateFeatureDetail } from './pages/TemplateFeature/TemplateFeatureDetail';
 import { TemplateFeatureEdit } from './pages/TemplateFeature/TemplateFeatureEdit';
+import { TemplateList } from './pages/Template/TemplateList';
+import { TemplateCreate } from './pages/Template/TemplateCreate';
+import { TemplateDetail } from './pages/Template/TemplateDetail';
+import { TemplateEdit } from './pages/Template/TemplateEdit';
 import { useAuth } from './hooks/useAuth';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -99,6 +103,10 @@ function App() {
                   <Route path="/templatefeatures/create" element={<TemplateFeatureCreate />} />
                   <Route path="/templatefeatures/:id" element={<TemplateFeatureDetail />} />
                   <Route path="/templatefeatures/:id/edit" element={<TemplateFeatureEdit />} />
+                  <Route path="/templates" element={<TemplateList />} />
+                  <Route path="/templates/create" element={<TemplateCreate />} />
+                  <Route path="/templates/:id" element={<TemplateDetail />} />
+                  <Route path="/templates/:id/edit" element={<TemplateEdit />} />
                 </Routes>
               </Layout>
             </ProtectedRoute>
