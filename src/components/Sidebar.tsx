@@ -13,6 +13,7 @@ import {
   TrashIcon,
   SparklesIcon,
   ScaleIcon,
+  LinkIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../hooks/useAuth';
 
@@ -49,6 +50,15 @@ const navigation: NavItem[] = [
     children: [
       { name: 'List', href: '/unitsofmeasure', icon: ListBulletIcon },
       { name: 'Create', href: '/unitsofmeasure/create', icon: PlusCircleIcon },
+    ],
+  },
+  {
+    name: 'Template Features',
+    href: '/templatefeatures',
+    icon: LinkIcon,
+    children: [
+      { name: 'List', href: '/templatefeatures', icon: ListBulletIcon },
+      { name: 'Create', href: '/templatefeatures/create', icon: PlusCircleIcon },
     ],
   },
   {

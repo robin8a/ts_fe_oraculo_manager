@@ -17,6 +17,10 @@ import { KoboToolboxImport } from './pages/KoboToolboxImport/KoboToolboxImport';
 import { Login } from './pages/Login/Login';
 import { ProjectTreeFeatureView } from './pages/ProjectTreeFeature/ProjectTreeFeatureView';
 import { DeleteProjectTreeFeature } from './pages/ProjectTreeFeature/DeleteProjectTreeFeature';
+import { TemplateFeatureList } from './pages/TemplateFeature/TemplateFeatureList';
+import { TemplateFeatureCreate } from './pages/TemplateFeature/TemplateFeatureCreate';
+import { TemplateFeatureDetail } from './pages/TemplateFeature/TemplateFeatureDetail';
+import { TemplateFeatureEdit } from './pages/TemplateFeature/TemplateFeatureEdit';
 import { useAuth } from './hooks/useAuth';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -91,6 +95,10 @@ function App() {
                   <Route path="/kobotoolbox/import" element={<KoboToolboxImport />} />
                   <Route path="/projects" element={<ProjectTreeFeatureView />} />
                   <Route path="/projects/delete" element={<DeleteProjectTreeFeature />} />
+                  <Route path="/templatefeatures" element={<TemplateFeatureList />} />
+                  <Route path="/templatefeatures/create" element={<TemplateFeatureCreate />} />
+                  <Route path="/templatefeatures/:id" element={<TemplateFeatureDetail />} />
+                  <Route path="/templatefeatures/:id/edit" element={<TemplateFeatureEdit />} />
                 </Routes>
               </Layout>
             </ProtectedRoute>
