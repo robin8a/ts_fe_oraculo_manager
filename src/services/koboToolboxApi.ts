@@ -234,36 +234,56 @@ export async function downloadAudioFile(
     // Lambda Function URL with isBase64Encoded: true auto-decodes base64 and returns binary directly
     // So we should get binary audio data, not JSON with base64
     
+    // Determine correct MIME type from download URL first
+    const urlLower = downloadUrl.toLowerCase();
+    let correctMimeType = 'audio/mp4'; // Default to m4a/mp4 for KoboToolbox
+    let fileExtension = 'm4a';
+    if (urlLower.includes('.mp3') || urlLower.includes('mp3')) {
+      correctMimeType = 'audio/mpeg';
+      fileExtension = 'mp3';
+    } else if (urlLower.includes('.m4a') || urlLower.includes('m4a')) {
+      correctMimeType = 'audio/mp4';
+      fileExtension = 'm4a';
+    } else if (urlLower.includes('.wav')) {
+      correctMimeType = 'audio/wav';
+      fileExtension = 'wav';
+    } else if (urlLower.includes('.ogg')) {
+      correctMimeType = 'audio/ogg';
+      fileExtension = 'ogg';
+    } else if (urlLower.includes('.aac')) {
+      correctMimeType = 'audio/aac';
+      fileExtension = 'aac';
+    }
+    
+    console.log(`Expected audio format: ${fileExtension}, MIME: ${correctMimeType}`);
+    
     // Check if response is binary audio (most common case with Function URLs)
     if (contentType.includes('audio/') || contentType.includes('application/octet-stream') || 
         contentType.includes('video/') || contentType.includes('binary')) {
       console.log('Received binary audio data directly from Function URL (auto-decoded)');
-      const audioBlob = await response.blob();
       
-      // Determine MIME type from download URL if not set correctly
-      if (!audioBlob.type || audioBlob.type === 'application/octet-stream') {
-        const urlLower = downloadUrl.toLowerCase();
-        let mimeType = 'audio/mp4'; // Default to m4a/mp4 for KoboToolbox
-        if (urlLower.includes('.m4a') || urlLower.includes('m4a')) {
-          mimeType = 'audio/mp4';
-        } else if (urlLower.includes('.mp3')) {
-          mimeType = 'audio/mpeg';
-        } else if (urlLower.includes('.wav')) {
-          mimeType = 'audio/wav';
-        } else if (urlLower.includes('.ogg')) {
-          mimeType = 'audio/ogg';
-        } else if (urlLower.includes('.aac')) {
-          mimeType = 'audio/aac';
-        }
-        // Create new Blob with correct MIME type
-        return new Blob([audioBlob], { type: mimeType });
+      // Get as ArrayBuffer first to ensure we have raw binary data
+      const arrayBuffer = await response.arrayBuffer();
+      
+      if (arrayBuffer.byteLength === 0) {
+        throw new Error('Received empty audio file from Lambda');
       }
       
-      console.log(`Audio Blob: size=${audioBlob.size}, type=${audioBlob.type}`);
+      console.log(`Audio ArrayBuffer: size=${arrayBuffer.byteLength} bytes`);
+      
+      // Create Blob with correct MIME type
+      const audioBlob = new Blob([arrayBuffer], { type: correctMimeType });
+      
+      // Validate the blob
+      if (audioBlob.size === 0) {
+        throw new Error('Created empty audio Blob');
+      }
+      
+      console.log(`Audio Blob created: size=${audioBlob.size}, type=${audioBlob.type}`);
       return audioBlob;
     }
 
-    // Fallback: Try to get as ArrayBuffer first (for binary data)
+    // Fallback: Try to get as ArrayBuffer (for binary data that wasn't detected by content-type)
     try {
       const arrayBuffer = await response.arrayBuffer();
       if (arrayBuffer.byteLength > 0) {
@@ -271,25 +291,16 @@ export async function downloadAudioFile(
         const firstBytes = new Uint8Array(arrayBuffer.slice(0, 4));
         const isLikelyBinary = firstBytes[0] !== 0x7B; // Not '{' (JSON start)
         
-        if (isLikelyBinary) {
-          console.log('Response appears to be binary data (ArrayBuffer)');
-          // Determine MIME type from download URL
-          let mimeType = 'audio/mp4'; // Default to m4a
-          const urlLower = downloadUrl.toLowerCase();
-          if (urlLower.includes('.m4a') || urlLower.includes('m4a')) {
-            mimeType = 'audio/mp4';
-          } else if (urlLower.includes('.mp3')) {
-            mimeType = 'audio/mpeg';
-          } else if (urlLower.includes('.wav')) {
-            mimeType = 'audio/wav';
-          } else if (urlLower.includes('.ogg')) {
-            mimeType = 'audio/ogg';
-          } else if (urlLower.includes('.aac')) {
-            mimeType = 'audio/aac';
-          }
-          
-          console.log(`Creating Blob from ArrayBuffer: size=${arrayBuffer.byteLength}, type=${mimeType}`);
-          return new Blob([arrayBuffer], { type: mimeType });
+        // Also check for common audio file signatures
+        // MP3: FF FB or FF F3, M4A/MP4: 00 00 00 ?? 66 74 79 70 (ftyp)
+        const isAudioSignature = 
+          (firstBytes[0] === 0xFF && (firstBytes[1] === 0xFB || firstBytes[1] === 0xF3)) || // MP3
+          (firstBytes[4] === 0x66 && firstBytes[5] === 0x74 && firstBytes[6] === 0x79 && firstBytes[7] === 0x70); // M4A/MP4 (ftyp)
+        
+        if (isLikelyBinary || isAudioSignature) {
+          console.log('Response appears to be binary audio data (ArrayBuffer), signature detected');
+          console.log(`Creating Blob from ArrayBuffer: size=${arrayBuffer.byteLength}, type=${correctMimeType}`);
+          return new Blob([arrayBuffer], { type: correctMimeType });
         }
       }
     } catch (arrayBufferError) {
@@ -297,30 +308,36 @@ export async function downloadAudioFile(
     }
 
     // Last resort: Try to parse as JSON (for API Gateway format with base64)
-    const responseText = await response.text();
+    // But first, try to get as ArrayBuffer if we haven't already
+    let responseText: string;
+    try {
+      // Clone the response to read as text (since we might have already read it)
+      const clonedResponse = response.clone();
+      responseText = await clonedResponse.text();
+    } catch (textError) {
+      // If we can't clone, the response might already be consumed
+      throw new Error('Failed to read response - response may have been consumed');
+    }
+    
     console.log('Lambda response text (first 200 chars):', responseText.substring(0, 200));
     
-    // Check if it's actually binary data disguised as text
-    if (responseText.length > 0 && (responseText.charCodeAt(0) < 32 || responseText.startsWith('ftyp'))) {
-      console.log('Response appears to be binary data (text format), converting to Blob');
-      const bytes = new Uint8Array(responseText.length);
-      for (let i = 0; i < responseText.length; i++) {
-        bytes[i] = responseText.charCodeAt(i);
+    // Check if it's actually binary data disguised as text (shouldn't happen with Function URLs)
+    if (responseText.length > 0) {
+      const firstChar = responseText.charCodeAt(0);
+      const isBinaryStart = firstChar < 32 || firstChar === 0xFF; // Binary start or MP3 header
+      const hasAudioSignature = responseText.startsWith('ftyp') || 
+                                 (firstChar === 0xFF && (responseText.charCodeAt(1) === 0xFB || responseText.charCodeAt(1) === 0xF3));
+      
+      if (isBinaryStart || hasAudioSignature) {
+        console.log('Response appears to be binary data (text format), converting to Blob');
+        // Convert text to binary - this is a fallback, shouldn't normally happen
+        const bytes = new Uint8Array(responseText.length);
+        for (let i = 0; i < responseText.length; i++) {
+          bytes[i] = responseText.charCodeAt(i) & 0xFF; // Ensure single byte
+        }
+        console.log(`Creating Blob from text (binary): size=${bytes.length}, type=${correctMimeType}`);
+        return new Blob([bytes], { type: correctMimeType });
       }
-      let mimeType = 'audio/mp4'; // Default to m4a
-      const urlLower = downloadUrl.toLowerCase();
-      if (urlLower.includes('.m4a') || urlLower.includes('m4a')) {
-        mimeType = 'audio/mp4';
-      } else if (urlLower.includes('.mp3')) {
-        mimeType = 'audio/mpeg';
-      } else if (urlLower.includes('.wav')) {
-        mimeType = 'audio/wav';
-      } else if (urlLower.includes('.ogg')) {
-        mimeType = 'audio/ogg';
-      } else if (urlLower.includes('.aac')) {
-        mimeType = 'audio/aac';
-      }
-      return new Blob([bytes], { type: mimeType });
     }
     
     // Try to parse as JSON (for API Gateway format)
@@ -353,23 +370,9 @@ export async function downloadAudioFile(
             bytes[i] = binaryString.charCodeAt(i);
           }
           
-          // Determine MIME type from download URL
-          let mimeType = 'audio/mp4'; // Default to m4a
-          const urlLower = downloadUrl.toLowerCase();
-          if (urlLower.includes('.m4a') || urlLower.includes('m4a')) {
-            mimeType = 'audio/mp4';
-          } else if (urlLower.includes('.mp3')) {
-            mimeType = 'audio/mpeg';
-          } else if (urlLower.includes('.wav')) {
-            mimeType = 'audio/wav';
-          } else if (urlLower.includes('.ogg')) {
-            mimeType = 'audio/ogg';
-          } else if (urlLower.includes('.aac')) {
-            mimeType = 'audio/aac';
-          }
-          
-          console.log(`Creating Blob from base64: size=${bytes.length}, type=${mimeType}`);
-          return new Blob([bytes], { type: mimeType });
+          // Use the correct MIME type we determined earlier
+          console.log(`Creating Blob from base64: size=${bytes.length}, type=${correctMimeType}`);
+          return new Blob([bytes], { type: correctMimeType });
         } catch (base64Error: any) {
           throw new Error(`Failed to decode base64 audio data: ${base64Error.message}`);
         }

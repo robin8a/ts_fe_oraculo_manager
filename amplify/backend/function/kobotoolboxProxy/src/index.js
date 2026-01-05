@@ -145,8 +145,9 @@ exports.handler = async (event) => {
 
         res.on('data', (chunk) => {
           if (isBinary) {
-            // Collect binary chunks as Buffer
-            chunks.push(Buffer.from(chunk));
+            // Collect binary chunks - chunk is already a Buffer in Node.js http/https
+            // Just push it directly to avoid any conversion issues
+            chunks.push(chunk);
           } else {
             // Collect text chunks as string
             textData += chunk.toString('utf8');
@@ -161,12 +162,26 @@ exports.handler = async (event) => {
 
           // For binary data (audio files), encode as base64
           if (downloadUrl) {
-            // Concatenate all binary chunks
+            // Concatenate all binary chunks into a single Buffer
             const binaryBuffer = Buffer.concat(chunks);
+            
+            // Validate we have data
+            if (binaryBuffer.length === 0) {
+              return reject({
+                statusCode: 500,
+                headers: {
+                  ...corsHeaders,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ error: 'No audio data received from KoboToolbox' }),
+              });
+            }
+            
             // Encode as base64 for Lambda response
+            // Lambda Function URLs will auto-decode this when isBase64Encoded: true
             const base64Data = binaryBuffer.toString('base64');
             
-            console.log(`Audio download: ${binaryBuffer.length} bytes, content-type: ${contentType}`);
+            console.log(`Audio download: ${binaryBuffer.length} bytes, content-type: ${contentType}, base64 length: ${base64Data.length}`);
             
             resolve({
               statusCode: res.statusCode,

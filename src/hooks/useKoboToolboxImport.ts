@@ -476,52 +476,75 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
                 const audioBlob = await downloadAudioFile(audioUrl, config.apiKey, config.serverUrl);
                 
                 // Detect original file extension from filename, URL, or MIME type
-                let fileExtension = 'm4a'; // Default to m4a for KoboToolbox audio
+                // Don't default - try to detect from actual sources
+                let fileExtension: string | null = null;
                 
-                // First, try to extract from filename
+                // First, try to extract from filename (most reliable)
                 if (audioFilename) {
                   const filenameLower = audioFilename.toLowerCase();
                   const extMatch = filenameLower.match(/\.(m4a|mp3|wav|ogg|aac|mp4)$/);
                   if (extMatch) {
-                    fileExtension = extMatch[1] === 'mp4' ? 'm4a' : extMatch[1]; // mp4 audio is typically m4a
+                    // mp4 audio files are typically m4a, but preserve if explicitly mp4
+                    fileExtension = extMatch[1] === 'mp4' ? 'm4a' : extMatch[1];
+                    console.log(`Detected extension from filename: ${fileExtension}`);
                   }
                 }
                 
                 // If not found in filename, check URL
-                if (fileExtension === 'm4a') {
+                if (!fileExtension) {
                   const urlLower = audioUrl.toLowerCase();
-                  if (urlLower.includes('.mp3')) {
+                  // Check in order of specificity (more specific patterns first)
+                  if (urlLower.match(/\.mp3[\?\/]|\.mp3$/)) {
                     fileExtension = 'mp3';
-                  } else if (urlLower.includes('.wav')) {
+                  } else if (urlLower.match(/\.m4a[\?\/]|\.m4a$/)) {
+                    fileExtension = 'm4a';
+                  } else if (urlLower.match(/\.wav[\?\/]|\.wav$/)) {
                     fileExtension = 'wav';
-                  } else if (urlLower.includes('.ogg')) {
+                  } else if (urlLower.match(/\.ogg[\?\/]|\.ogg$/)) {
                     fileExtension = 'ogg';
-                  } else if (urlLower.includes('.aac')) {
+                  } else if (urlLower.match(/\.aac[\?\/]|\.aac$/)) {
                     fileExtension = 'aac';
+                  } else if (urlLower.match(/\.mp4[\?\/]|\.mp4$/)) {
+                    fileExtension = 'm4a'; // mp4 audio files are typically m4a
+                  } else if (urlLower.includes('.mp3')) {
+                    fileExtension = 'mp3';
                   } else if (urlLower.includes('.m4a')) {
                     fileExtension = 'm4a';
-                  } else if (urlLower.includes('.mp4')) {
-                    fileExtension = 'm4a'; // mp4 audio files are typically m4a
+                  }
+                  if (fileExtension) {
+                    console.log(`Detected extension from URL: ${fileExtension}`);
                   }
                 }
                 
-                // If still default, check MIME type
-                if (fileExtension === 'm4a' && audioBlob.type) {
+                // If still not found, check MIME type from blob
+                if (!fileExtension && audioBlob.type) {
                   const mimeType = audioBlob.type.toLowerCase();
                   if (mimeType.includes('mp3') || mimeType.includes('mpeg')) {
                     fileExtension = 'mp3';
+                  } else if (mimeType.includes('m4a') || mimeType.includes('x-m4a')) {
+                    fileExtension = 'm4a';
+                  } else if (mimeType.includes('mp4')) {
+                    fileExtension = 'm4a'; // mp4 audio is typically m4a
                   } else if (mimeType.includes('wav') || mimeType.includes('wave')) {
                     fileExtension = 'wav';
                   } else if (mimeType.includes('ogg')) {
                     fileExtension = 'ogg';
                   } else if (mimeType.includes('aac')) {
                     fileExtension = 'aac';
-                  } else if (mimeType.includes('m4a') || mimeType.includes('mp4') || mimeType.includes('x-m4a')) {
-                    fileExtension = 'm4a';
+                  }
+                  if (fileExtension) {
+                    console.log(`Detected extension from MIME type: ${fileExtension}`);
                   }
                 }
                 
-                console.log(`Detected file extension: ${fileExtension}, MIME type: ${audioBlob.type}`);
+                // Final fallback: default based on what's most common for KoboToolbox
+                // But prefer mp3 if we can't determine (since user says files are mp3)
+                if (!fileExtension) {
+                  fileExtension = 'mp3'; // Default to mp3 if we can't detect
+                  console.log(`Using default extension: ${fileExtension} (could not detect from filename/URL/MIME)`);
+                }
+                
+                console.log(`Final detected file extension: ${fileExtension}, MIME type: ${audioBlob.type}, Blob size: ${audioBlob.size}`);
                 const audioFile = blobToFile(audioBlob, `${columnName}_${rowIndex + 1}.${fileExtension}`);
 
                 // Upload to S3
