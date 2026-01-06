@@ -53,14 +53,21 @@ export const TemplateCreate: React.FC = () => {
       return;
     }
 
-    const input = {
+    // Build input object, only including templateTemplatesId if it has a value
+    // This prevents DynamoDB GSI errors when the field would be null
+    const input: any = {
       name: formData.name,
       description: formData.description || null,
       type: formData.type ? Number(formData.type) : 1,
       version: formData.version || null,
       is_latest: formData.is_latest,
-      templateTemplatesId: formData.templateTemplatesId || null,
     };
+
+    // Only include templateTemplatesId if it has a value (not empty string)
+    // This prevents sending null to DynamoDB GSI which expects a String
+    if (formData.templateTemplatesId && formData.templateTemplatesId.trim() !== '') {
+      input.templateTemplatesId = formData.templateTemplatesId;
+    }
 
     const result = await createTemplate(input);
     if (result) {
