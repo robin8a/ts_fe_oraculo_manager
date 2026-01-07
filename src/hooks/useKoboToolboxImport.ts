@@ -170,11 +170,37 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
       const projectId = await findOrCreateProject('Levantamiento Info Parcelas');
       result.projectId = projectId;
 
-      // Step 3: Get all column names from first row
+      // Step 3: Get all column names from all rows (not just first row)
+      // Some columns might only appear in later rows
+      const allColumnNamesSet = new Set<string>();
+      for (const row of rowsToProcess) {
+        const rowKeys = Object.keys(row);
+        for (const key of rowKeys) {
+          // Filter out system/internal columns
+          if (!key.startsWith('_') && key !== '_id' && key !== '_uuid' && key !== '_submission_time') {
+            allColumnNamesSet.add(key);
+          }
+        }
+      }
+      const columnNames = Array.from(allColumnNamesSet);
+      
+      // Also check first row for comparison
       const firstRow = rowsToProcess[0];
-      const columnNames = Object.keys(firstRow).filter(
+      const firstRowKeys = Object.keys(firstRow);
+      const firstRowColumns = firstRowKeys.filter(
         key => !key.startsWith('_') && key !== '_id' && key !== '_uuid' && key !== '_submission_time'
       );
+
+      console.log(`Total keys in first row: ${firstRowKeys.length}`);
+      console.log(`Columns in first row: ${firstRowColumns.length}`);
+      console.log(`Total unique columns across all rows: ${columnNames.length}`);
+      console.log(`Column names:`, columnNames);
+      
+      // Warn if there's a significant difference
+      if (columnNames.length > firstRowColumns.length) {
+        const additionalColumns = columnNames.filter(col => !firstRowColumns.includes(col));
+        console.log(`Additional columns found in other rows:`, additionalColumns);
+      }
 
       updateProgress({
         stage: 'processing',
@@ -217,13 +243,20 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
 
         try {
           const { id: featureId, created } = await findOrCreateFeature(columnName, isFloat);
+          
+          if (!featureId) {
+            throw new Error('Feature creation returned no ID');
+          }
+          
           featureMap.set(columnName, featureId);
           featureIsFloatMap.set(columnName, isFloat);
           
           if (created) {
             result.featuresCreated++;
+            console.log(`Created new feature: ${columnName} (ID: ${featureId})`);
           } else {
             result.featuresSkipped++;
+            console.log(`Using existing feature: ${columnName} (ID: ${featureId})`);
           }
           
           updateProgress({
@@ -237,8 +270,21 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
             totalFeatures: columnNames.length,
           });
         } catch (err: any) {
-          result.errors.push(`Failed to create feature ${columnName}: ${err.message}`);
+          const errorMsg = `Failed to create feature ${columnName}: ${err.message}`;
+          console.error(errorMsg, err);
+          result.errors.push(errorMsg);
+          // Don't add to featureMap if creation failed - this will cause the column to be skipped later
+          // But log it so we can see which features failed
+          console.error(`Feature "${columnName}" will be skipped in row processing due to creation failure`);
         }
+      }
+
+      // Validate that all features were created successfully
+      console.log(`Feature creation complete. Total columns: ${columnNames.length}, Features in map: ${featureMap.size}`);
+      const missingFeatures = columnNames.filter(col => !featureMap.has(col));
+      if (missingFeatures.length > 0) {
+        console.warn(`Warning: ${missingFeatures.length} features were not created:`, missingFeatures);
+        result.errors.push(`Warning: Failed to create ${missingFeatures.length} features: ${missingFeatures.join(', ')}`);
       }
 
       // Step 4.5: Create or find special feature for storing KoboToolbox _id
@@ -384,12 +430,43 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
           result.treesCreated++;
 
           // Create RawData entries for each column
+          let columnsProcessed = 0;
+          let columnsSkippedNoFeature = 0;
+          let columnsSkippedEmpty = 0;
+          
+          console.log(`Processing row ${rowIndex + 1}: Starting to process ${columnNames.length} columns`);
+          console.log(`FeatureMap has ${featureMap.size} features. Expected ${columnNames.length}`);
+          
           for (const columnName of columnNames) {
             const featureId = featureMap.get(columnName);
-            if (!featureId) continue;
+            if (!featureId) {
+              columnsSkippedNoFeature++;
+              console.warn(`Row ${rowIndex + 1}: Skipping column "${columnName}" - feature not found in featureMap`);
+              // Log available features for debugging
+              if (columnsSkippedNoFeature === 1) {
+                console.log(`Available features in map:`, Array.from(featureMap.keys()));
+              }
+              continue;
+            }
 
             const value = row[columnName];
-            if (value === null || value === undefined || value === '') continue;
+            // Check for empty values (null, undefined, empty string, or whitespace-only string)
+            const isEmpty = value === null || 
+                           value === undefined || 
+                           value === '' || 
+                           (typeof value === 'string' && value.trim() === '');
+            
+            if (isEmpty) {
+              columnsSkippedEmpty++;
+              // Only log first few empty values to avoid spam
+              if (columnsSkippedEmpty <= 3) {
+                console.log(`Row ${rowIndex + 1}: Skipping column "${columnName}" - empty value (${typeof value})`);
+              }
+              continue;
+            }
+
+            columnsProcessed++;
+            console.log(`Row ${rowIndex + 1}: Processing column "${columnName}" (${columnsProcessed}/${columnNames.length})`);
 
             const isFloat = featureIsFloatMap.get(columnName) || false;
 
@@ -595,9 +672,21 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
 
                 result.rawDataCreated++;
               } catch (err: any) {
-                result.errors.push(`Failed to create RawData for ${columnName} in row ${rowIndex + 1}: ${err.message}`);
+                const errorMsg = `Failed to create RawData for ${columnName} in row ${rowIndex + 1}: ${err.message}`;
+                console.error(errorMsg, err);
+                result.errors.push(errorMsg);
+                // Continue processing other columns even if this one fails
               }
             }
+          }
+          
+          const totalSkipped = columnsSkippedNoFeature + columnsSkippedEmpty;
+          console.log(`Row ${rowIndex + 1} complete: Processed ${columnsProcessed} columns, Skipped ${totalSkipped} total (${columnsSkippedNoFeature} no feature, ${columnsSkippedEmpty} empty)`);
+          
+          // Log warning if very few columns were processed
+          if (columnsProcessed < columnNames.length * 0.1) {
+            console.warn(`Warning: Only ${columnsProcessed} out of ${columnNames.length} columns were processed for row ${rowIndex + 1}`);
+            result.errors.push(`Warning: Row ${rowIndex + 1} - Only ${columnsProcessed} out of ${columnNames.length} columns processed. ${columnsSkippedNoFeature} skipped (no feature), ${columnsSkippedEmpty} skipped (empty)`);
           }
 
           // Store the KoboToolbox _id in RawData for duplicate detection
@@ -622,8 +711,25 @@ export function useKoboToolboxImport(): UseKoboToolboxImportResult {
             }
           }
         } catch (err: any) {
-          result.errors.push(`Failed to process row ${rowIndex + 1}: ${err.message}`);
+          const errorMsg = `Failed to process row ${rowIndex + 1}: ${err.message}`;
+          console.error(errorMsg, err);
+          result.errors.push(errorMsg);
         }
+      }
+
+      // Final summary
+      console.log('=== Import Summary ===');
+      console.log(`Total rows processed: ${rowsToProcess.length}`);
+      console.log(`Total columns available: ${columnNames.length}`);
+      console.log(`Features created: ${result.featuresCreated}`);
+      console.log(`Features skipped (already existed): ${result.featuresSkipped}`);
+      console.log(`Trees created: ${result.treesCreated}`);
+      console.log(`RawData entries created: ${result.rawDataCreated}`);
+      console.log(`Audio files uploaded: ${result.audioFilesUploaded}`);
+      console.log(`Rows skipped (duplicates): ${result.rowsSkipped}`);
+      console.log(`Total errors: ${result.errors.length}`);
+      if (result.errors.length > 0) {
+        console.log('Errors:', result.errors);
       }
 
       updateProgress({

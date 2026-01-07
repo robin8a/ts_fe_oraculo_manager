@@ -87,5 +87,67 @@ src/
 - Headless UI
 - Heroicons
 
+## Tareas principales
+
+1. SSO para las aplicaciones,  autenticación y autorización (prod)
+
+@neider
+
+- Oráculo
+- Drones Images
+- Model AI manager/Kobol Integración
+
+MVR (monitoring, verificaction, reporting)
+Plataformas independientes
+Monitoreo son servicios de oraculo
+
+2. ETL Glue / Athena parquet
+
+@muaricio pruebas
+@rances
+@robin
+
+- IoT
+- Forms (Hoja de vida de los arboles)
+
+3. Multimodelos
+
+@luis_miguel
+@mauricio
+
+- Publicación y aprobación a través "Model AI Manager"
+
+4. Migración Alchemy MySQL => AppSync GraphQL
+
+@mauricio
+@robin
+
+5. Integración Kobol
+
+@robin
+@rances
+
+6. Codificacion
+
+Proyecto => Predio => Parcelas => Arbol_ID (lat,long)
+Codificacion clara
 
 
+COL_MET_<PREDIO_COD>_<PARCELA_COD>_<ARBOL_ID>
+
+PREDIO_GEOJSON_POLYGON
+PARCELA_GEOJSON_POLYGON
+
+PCI, "Cuarto de dato"
+
+Estandarización de los 
+
+Punto de muestreo, no como árbol
+
+[] Mirar la codificación por departamento/municipio
+
+
+7. Herramienta de drones, imágenes
+
+Predio => Parcela => 
+"Cuarto de datos"
