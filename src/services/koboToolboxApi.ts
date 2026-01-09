@@ -12,28 +12,161 @@ const getFunctionUrl = () => {
 const LAMBDA_FUNCTION_URL = getFunctionUrl();
 
 /**
+ * Get the current Lambda Function URL (for debugging/external use)
+ */
+export function getKoboToolboxProxyUrl(): string {
+  return LAMBDA_FUNCTION_URL;
+}
+
+/**
+ * Validate that the Function URL is configured
+ */
+function validateFunctionUrl(): void {
+  if (!LAMBDA_FUNCTION_URL || LAMBDA_FUNCTION_URL.trim() === '') {
+    console.error('❌ Lambda Function URL is not configured!');
+    console.error('Please set VITE_KOBOTOOLBOX_PROXY_URL environment variable or update the default URL in koboToolboxApi.ts');
+  } else if (!LAMBDA_FUNCTION_URL.startsWith('http://') && !LAMBDA_FUNCTION_URL.startsWith('https://')) {
+    console.error('❌ Lambda Function URL is invalid:', LAMBDA_FUNCTION_URL);
+    console.error('URL must start with http:// or https://');
+  } else {
+    console.log('✓ Lambda Function URL configured:', LAMBDA_FUNCTION_URL);
+  }
+}
+
+// Validate on module load (only in browser)
+if (typeof window !== 'undefined') {
+  validateFunctionUrl();
+}
+
+/**
  * Test Function URL connectivity (for debugging)
  * Call this from browser console: window.testKoboToolboxProxy()
  */
 if (typeof window !== 'undefined') {
   (window as any).testKoboToolboxProxy = async () => {
     console.log('Testing Lambda Function URL:', LAMBDA_FUNCTION_URL);
+    const results: any = {
+      functionUrl: LAMBDA_FUNCTION_URL,
+      tests: [],
+    };
+    
+    // Test 1: Basic connectivity
     try {
+      console.log('Test 1: Basic connectivity test...');
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
       const response = await fetch(LAMBDA_FUNCTION_URL, {
         method: 'POST',
         mode: 'cors',
+        credentials: 'omit',
+        signal: controller.signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ test: 'connectivity' }),
       });
+      clearTimeout(timeoutId);
+      
       const text = await response.text();
-      console.log('Response status:', response.status);
-      console.log('Response headers:', Object.fromEntries(response.headers.entries()));
-      console.log('Response body:', text);
-      return { success: true, status: response.status, body: text };
+      results.tests.push({
+        name: 'Basic connectivity',
+        success: true,
+        status: response.status,
+        headers: Object.fromEntries(response.headers.entries()),
+        body: text.substring(0, 200),
+      });
+      console.log('✓ Connectivity test passed:', response.status);
     } catch (error: any) {
-      console.error('Test failed:', error);
-      return { success: false, error: error.message };
+      results.tests.push({
+        name: 'Basic connectivity',
+        success: false,
+        error: error.message,
+        errorType: error.name,
+        isTimeout: error.name === 'AbortError',
+        isCorsError: error.message.includes('CORS') || error.message.includes('fetch'),
+      });
+      console.error('✗ Connectivity test failed:', error);
     }
+    
+    // Test 2: OPTIONS preflight (CORS)
+    try {
+      console.log('Test 2: CORS preflight test...');
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      
+      const response = await fetch(LAMBDA_FUNCTION_URL, {
+        method: 'OPTIONS',
+        mode: 'cors',
+        credentials: 'omit',
+        signal: controller.signal,
+        headers: {
+          'Origin': window.location.origin,
+          'Access-Control-Request-Method': 'POST',
+          'Access-Control-Request-Headers': 'Content-Type',
+        },
+      });
+      clearTimeout(timeoutId);
+      
+      results.tests.push({
+        name: 'CORS preflight',
+        success: true,
+        status: response.status,
+        headers: Object.fromEntries(response.headers.entries()),
+      });
+      console.log('✓ CORS preflight test passed:', response.status);
+    } catch (error: any) {
+      results.tests.push({
+        name: 'CORS preflight',
+        success: false,
+        error: error.message,
+        errorType: error.name,
+      });
+      console.error('✗ CORS preflight test failed:', error);
+    }
+    
+    // Test 3: Actual request with valid payload
+    try {
+      console.log('Test 3: Valid request test...');
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout for actual request
+      
+      const response = await fetch(LAMBDA_FUNCTION_URL, {
+        method: 'POST',
+        mode: 'cors',
+        credentials: 'omit',
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          serverUrl: 'kf.kobotoolbox.org',
+          apiKey: 'test-key',
+          projectUid: 'test-project',
+          format: 'json',
+        }),
+      });
+      clearTimeout(timeoutId);
+      
+      const text = await response.text();
+      results.tests.push({
+        name: 'Valid request',
+        success: response.ok,
+        status: response.status,
+        body: text.substring(0, 200),
+      });
+      console.log('✓ Valid request test completed:', response.status);
+    } catch (error: any) {
+      results.tests.push({
+        name: 'Valid request',
+        success: false,
+        error: error.message,
+        errorType: error.name,
+      });
+      console.error('✗ Valid request test failed:', error);
+    }
+    
+    console.log('=== Test Results ===', results);
+    return results;
   };
 }
 
@@ -54,10 +187,15 @@ export async function fetchData(
     // Note: Function URLs handle CORS automatically if configured in AWS
     console.log('Making request to:', LAMBDA_FUNCTION_URL);
     
+    // Create AbortController for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+    
     const response = await fetch(LAMBDA_FUNCTION_URL, {
       method: 'POST',
       mode: 'cors', // Explicitly request CORS
       credentials: 'omit', // Don't send cookies
+      signal: controller.signal, // Add timeout support
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
@@ -69,23 +207,46 @@ export async function fetchData(
         format,
       }),
     }).catch((fetchError: any) => {
+      clearTimeout(timeoutId);
       console.error('Fetch error details:', {
         message: fetchError.message,
         name: fetchError.name,
         stack: fetchError.stack,
+        isTimeout: fetchError.name === 'AbortError',
+        isNetworkError: fetchError.message === 'Failed to fetch' || fetchError.name === 'TypeError',
+        isCorsError: fetchError.message.includes('CORS') || 
+                     (fetchError.message === 'Failed to fetch' && typeof navigator !== 'undefined' && navigator.onLine),
       });
+      
+      // Provide more specific error messages
+      let errorDetails = '';
+      if (fetchError.name === 'AbortError') {
+        errorDetails = 'Request timed out after 60 seconds. The Lambda function may be slow or unresponsive.';
+      } else if (fetchError.message === 'Failed to fetch') {
+        errorDetails = 'Network request failed. This could be due to:\n' +
+          '- CORS not configured on the Lambda Function URL\n' +
+          '- Function URL is disabled or deleted\n' +
+          '- Network/firewall blocking the request\n' +
+          '- Browser extension blocking CORS requests';
+      } else {
+        errorDetails = `Error: ${fetchError.message}`;
+      }
+      
       throw new Error(
         `Network error: Cannot reach Lambda Function URL.\n\n` +
-        `Error: ${fetchError.message}\n\n` +
+        `${errorDetails}\n\n` +
         `Please verify:\n` +
         `1. Lambda Function URL is correct: ${LAMBDA_FUNCTION_URL}\n` +
-        `2. Function URL is enabled and accessible\n` +
+        `2. Function URL is enabled and accessible in AWS Lambda Console\n` +
         `3. CORS is configured in AWS Lambda Console\n` +
         `4. No browser extensions are blocking the request\n\n` +
         `To enable CORS, run:\n` +
-        `aws lambda update-function-url-config --function-name kobotoolboxProxy-dev --cors '{"AllowOrigins":["*"],"AllowMethods":["POST","OPTIONS"],"AllowHeaders":["Content-Type","Authorization","X-Requested-With"],"MaxAge":86400}'`
+        `aws lambda update-function-url-config --function-name kobotoolboxProxy-dev --cors '{"AllowOrigins":["*"],"AllowMethods":["POST","OPTIONS"],"AllowHeaders":["Content-Type","Authorization","X-Requested-With"],"MaxAge":86400}'\n\n` +
+        `To test the Function URL, open browser console and run: window.testKoboToolboxProxy()`
       );
     });
+    
+    clearTimeout(timeoutId);
 
     console.log('Lambda response status:', response.status, response.statusText);
     console.log('Lambda response headers:', Object.fromEntries(response.headers.entries()));
@@ -209,17 +370,54 @@ export async function downloadAudioFile(
     console.log('Downloading audio from URL:', fullUrl);
 
     // Call Lambda Function URL directly
+    // Create AbortController for timeout (audio files may be large, so longer timeout)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout for audio downloads
+    
     const response = await fetch(LAMBDA_FUNCTION_URL, {
       method: 'POST',
+      mode: 'cors',
+      credentials: 'omit',
+      signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
       },
       body: JSON.stringify({
         downloadUrl: fullUrl,
         apiKey,
         serverUrl: serverUrl || 'kf.kobotoolbox.org', // Pass serverUrl for URL construction fallback
       }),
+    }).catch((fetchError: any) => {
+      clearTimeout(timeoutId);
+      console.error('Audio download fetch error:', {
+        message: fetchError.message,
+        name: fetchError.name,
+        isTimeout: fetchError.name === 'AbortError',
+        isNetworkError: fetchError.message === 'Failed to fetch',
+      });
+      
+      let errorDetails = '';
+      if (fetchError.name === 'AbortError') {
+        errorDetails = 'Audio download timed out after 5 minutes. The file may be too large or the Lambda function may be slow.';
+      } else if (fetchError.message === 'Failed to fetch') {
+        errorDetails = 'Network request failed. Please verify:\n' +
+          '- Lambda Function URL is enabled and accessible\n' +
+          '- CORS is configured correctly\n' +
+          '- Network/firewall is not blocking the request';
+      } else {
+        errorDetails = `Error: ${fetchError.message}`;
+      }
+      
+      throw new Error(
+        `Failed to download audio via Lambda Function URL.\n\n` +
+        `${errorDetails}\n\n` +
+        `Function URL: ${LAMBDA_FUNCTION_URL}\n` +
+        `Audio URL: ${fullUrl}`
+      );
     });
+    
+    clearTimeout(timeoutId);
 
     // Check content type to determine response format
     const contentType = response.headers.get('content-type') || '';
