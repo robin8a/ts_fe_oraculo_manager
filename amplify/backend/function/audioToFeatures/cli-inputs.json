@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "serviceConfiguration": {
+    "serviceName": "Lambda",
+    "serviceType": "AWS_LAMBDA",
+    "providerPlugin": "awscloudformation",
+    "dependsOn": [
+      {
+        "category": "api",
+        "resourceName": "tsbeoraculoapi",
+        "attributes": [
+          "GraphQLAPIIdOutput",
+          "GraphQLAPIEndpointOutput"
+        ]
+      },
+      {
+        "category": "storage",
+        "resourceName": "s3744e127b",
+        "attributes": [
+          "BucketName"
+        ]
+      }
+    ],
+    "build": true,
+    "runtime": "nodejs18.x",
+    "functionName": "audioToFeatures",
+    "handler": "index.handler",
+    "roleName": "audioToFeaturesLambdaRole",
+    "environmentVariables": {}
+  }
+}

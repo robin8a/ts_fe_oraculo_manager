@@ -14,6 +14,7 @@ import { UnitOfMeasureCreate } from './pages/UnitOfMeasure/UnitOfMeasureCreate';
 import { UnitOfMeasureEdit } from './pages/UnitOfMeasure/UnitOfMeasureEdit';
 import { UnitOfMeasureDetail } from './pages/UnitOfMeasure/UnitOfMeasureDetail';
 import { KoboToolboxImport } from './pages/KoboToolboxImport/KoboToolboxImport';
+import { AudioToFeatures } from './pages/AudioToFeatures/AudioToFeatures';
 import { Login } from './pages/Login/Login';
 import { ProjectTreeFeatureView } from './pages/ProjectTreeFeature/ProjectTreeFeatureView';
 import { DeleteProjectTreeFeature } from './pages/ProjectTreeFeature/DeleteProjectTreeFeature';
@@ -97,6 +98,7 @@ function App() {
                   <Route path="/unitsofmeasure/:id" element={<UnitOfMeasureDetail />} />
                   <Route path="/unitsofmeasure/:id/edit" element={<UnitOfMeasureEdit />} />
                   <Route path="/kobotoolbox/import" element={<KoboToolboxImport />} />
+                  <Route path="/audio-to-features" element={<AudioToFeatures />} />
                   <Route path="/projects" element={<ProjectTreeFeatureView />} />
                   <Route path="/projects/delete" element={<DeleteProjectTreeFeature />} />
                   <Route path="/templatefeatures" element={<TemplateFeatureList />} />

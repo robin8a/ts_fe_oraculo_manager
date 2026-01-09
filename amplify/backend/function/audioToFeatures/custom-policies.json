@@ -1,0 +1,15 @@
+[
+  {
+    "Action": [
+      "s3:GetObject",
+      "s3:GetObjectVersion"
+    ],
+    "Resource": []
+  },
+  {
+    "Action": [
+      "appsync:GraphQL"
+    ],
+    "Resource": []
+  }
+]

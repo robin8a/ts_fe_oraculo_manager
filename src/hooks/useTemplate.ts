@@ -177,3 +177,4 @@ export function useDeleteTemplate(): UseDeleteTemplateResult {
   return { deleteTemplate: deleteTemplateMutation, loading, error };
 }
 
+

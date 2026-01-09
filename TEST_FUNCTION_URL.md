@@ -51,3 +51,4 @@ aws lambda get-function-url-config \
 
 Check that `Cors` is configured and `FunctionUrlStatus` is `ACTIVE`.
 
+

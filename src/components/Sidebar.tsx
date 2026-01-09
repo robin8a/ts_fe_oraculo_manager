@@ -15,6 +15,7 @@ import {
   ScaleIcon,
   LinkIcon,
   DocumentIcon,
+  MicrophoneIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../hooks/useAuth';
 
@@ -85,6 +86,11 @@ const navigation: NavItem[] = [
     name: 'KoboToolbox Import',
     href: '/kobotoolbox/import',
     icon: CloudArrowDownIcon,
+  },
+  {
+    name: 'Audio to Features',
+    href: '/audio-to-features',
+    icon: MicrophoneIcon,
   },
 ];
 

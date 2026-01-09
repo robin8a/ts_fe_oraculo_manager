@@ -10,11 +10,15 @@
 - Use every row to create a new "Tree" and asociate the "Feature" created with its corresponding value
 - For the colum audio upload to S3 amplify configured storage bucket and asociate the feature with the s3 URL using the corresponding TreeID.
 
-## Help to create a new lambda function and UI/Ux
+## Audio features to Trees lambda funciont an UI
 
 1. Help me to create a amplify lambda function that:
 
-- load the audio_levantamiento.
+- Recieve as a parameters the tree ID or IDs to be process, or all the trees. Also the template. Gemini API key.
+- For every audio audio detected for instances the "audio_levantamiento" in the Trees from using the GraphQL API.
+- Use the Features asociated to a "Template" as a key words to find the features and its value in to the audio using Gemini API as follow in the next python code as an example.
+- For every feature detected form the template in the audio, set the value creating the RawData with its own tree_id, feature_id and value
+
 
 ```python
 import google.generativeai as genai
@@ -33,7 +37,7 @@ model = genai.GenerativeModel(
     }
 )
 
-# 3. Prompt with your list of keywords
+# 3. Prompt with your list of keywords from the Template
 prompt = """
 Extract the technical information from the audio and return it strictly in JSON format.
 If a value is not mentioned, set it to null.
@@ -50,4 +54,10 @@ response = model.generate_content([prompt, audio_file])
 extracted_data = response.text # This is now a JSON string
 ```
 
+2. Create a new UI component
 
+- Name it as "Audio to features"
+- Add to the sidebar
+- Allow to set the function parameters
+- Show the total audios detected for every tree
+- Show the progress for every tree audio process

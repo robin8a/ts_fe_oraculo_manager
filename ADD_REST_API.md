@@ -50,3 +50,4 @@ If you prefer not to use API Gateway, you can enable Function URL for the Lambda
 
 Choose one of the options above to expose the Lambda function.
 
+

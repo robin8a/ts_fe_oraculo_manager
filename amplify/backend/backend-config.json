@@ -44,6 +44,11 @@
     }
   },
   "function": {
+    "audioToFeatures": {
+      "build": true,
+      "providerPlugin": "awscloudformation",
+      "service": "Lambda"
+    },
     "kobotoolboxProxy": {
       "build": true,
       "providerPlugin": "awscloudformation",
