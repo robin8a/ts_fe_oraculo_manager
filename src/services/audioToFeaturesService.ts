@@ -26,8 +26,11 @@ export interface ProcessAudioToFeaturesResponse {
   };
 }
 
-// Lambda Function URL for audioToFeatures
-// This will be set after deployment via environment variable or manually
+// Lambda Function URL for tsAudioToFeatures
+// The function is deployed as "tsAudioToFeatures"
+// Set VITE_AUDIO_TO_FEATURES_FUNCTION_URL environment variable with the Function URL
+// You can get the Function URL from AWS Lambda Console or by running:
+// aws lambda get-function-url-config --function-name tsAudioToFeatures-dev
 const getFunctionUrl = () => {
   const url = import.meta.env.VITE_AUDIO_TO_FEATURES_FUNCTION_URL || '';
   return url.endsWith('/') ? url.slice(0, -1) : url;
@@ -43,7 +46,13 @@ export async function processAudioToFeatures(
 ): Promise<ProcessAudioToFeaturesResponse> {
   if (!LAMBDA_FUNCTION_URL) {
     throw new Error(
-      'Lambda Function URL not configured. Please set VITE_AUDIO_TO_FEATURES_FUNCTION_URL environment variable or configure the function URL.'
+      'Lambda Function URL not configured. Please set VITE_AUDIO_TO_FEATURES_FUNCTION_URL environment variable with the Function URL for tsAudioToFeatures.\n\n' +
+      'To get the Function URL:\n' +
+      '1. Go to AWS Lambda Console\n' +
+      '2. Find function: tsAudioToFeatures-dev (or tsAudioToFeatures-<env>)\n' +
+      '3. Go to Configuration > Function URL\n' +
+      '4. Copy the Function URL\n' +
+      '5. Add to your .env file: VITE_AUDIO_TO_FEATURES_FUNCTION_URL=<your-function-url>'
     );
   }
 
