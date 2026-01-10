@@ -1,8 +1,5 @@
 {
-  "requestContext": {
-    "http": {
-      "method": "POST"
-    }
-  },
-  "body": "{\"templateId\":\"test-template-id\",\"geminiApiKey\":\"test-api-key\",\"treeIds\":[\"test-tree-id\"]}"
+  "key1": "value1",
+  "key2": "value2",
+  "key3": "value3"
 }
