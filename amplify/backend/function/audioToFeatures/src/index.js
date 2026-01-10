@@ -312,6 +312,22 @@ exports.handler = async (event) => {
   }
 
   try {
+    // Validate environment variables first
+    if (!GRAPHQL_ENDPOINT || !GRAPHQL_API_KEY || !S3_BUCKET) {
+      console.error('Missing environment variables:', {
+        GRAPHQL_ENDPOINT: !!GRAPHQL_ENDPOINT,
+        GRAPHQL_API_KEY: !!GRAPHQL_API_KEY,
+        S3_BUCKET: !!S3_BUCKET,
+      });
+      return {
+        statusCode: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          error: 'Lambda function configuration error: Missing required environment variables (GRAPHQL_ENDPOINT, GRAPHQL_API_KEY, or S3_BUCKET)',
+        }),
+      };
+    }
+
     // Parse request body
     let bodyData = {};
     if (event.body) {
@@ -328,7 +344,11 @@ exports.handler = async (event) => {
       };
     }
 
-    console.log('Processing audio to features:', { treeIds, templateId });
+    console.log('Processing audio to features:', { 
+      treeIds: treeIds ? treeIds.length : 'all', 
+      templateId,
+      hasGeminiKey: !!geminiApiKey 
+    });
 
     // Step 1: Get Template and Features
     console.log('Fetching template and features...');
@@ -498,12 +518,14 @@ exports.handler = async (event) => {
     };
   } catch (error) {
     console.error('Lambda error:', error);
+    console.error('Error stack:', error.stack);
     return {
       statusCode: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        error: error.message,
-        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+        error: error.message || 'Internal server error',
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+        type: error.constructor.name,
       }),
     };
   }
