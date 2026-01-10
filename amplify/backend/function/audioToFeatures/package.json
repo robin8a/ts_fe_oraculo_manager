@@ -5,9 +5,6 @@
   "main": "index.js",
   "dependencies": {
     "@aws-sdk/client-s3": "^3.490.0",
-    "@aws-sdk/client-appsync": "^3.490.0",
-    "google-generativeai": "^0.21.0",
-    "graphql": "^16.8.1",
-    "graphql-request": "^6.1.0"
+    "@google/generative-ai": "^0.21.0"
   }
 }

@@ -1,6 +1,6 @@
 const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
 const https = require('https');
-const { GoogleGenerativeAI } = require('google-generativeai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 // Initialize AWS clients
 const s3Client = new S3Client({ region: process.env.AWS_REGION || 'us-east-1' });
@@ -92,48 +92,71 @@ const CREATE_RAWDATA_MUTATION = `
 
 // Helper function to make GraphQL requests
 async function graphqlRequest(query, variables = {}) {
+  if (!GRAPHQL_ENDPOINT) {
+    throw new Error('GRAPHQL_ENDPOINT environment variable is not set');
+  }
+  if (!GRAPHQL_API_KEY) {
+    throw new Error('GRAPHQL_API_KEY environment variable is not set');
+  }
+
   return new Promise((resolve, reject) => {
-    const url = new URL(GRAPHQL_ENDPOINT);
-    const postData = JSON.stringify({ query, variables });
+    try {
+      const url = new URL(GRAPHQL_ENDPOINT);
+      const postData = JSON.stringify({ query, variables });
 
-    const options = {
-      hostname: url.hostname,
-      path: url.pathname,
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': GRAPHQL_API_KEY,
-        'Content-Length': Buffer.byteLength(postData),
-      },
-    };
+      const options = {
+        hostname: url.hostname,
+        path: url.pathname,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': GRAPHQL_API_KEY,
+          'Content-Length': Buffer.byteLength(postData),
+        },
+        timeout: 30000, // 30 second timeout
+      };
 
-    const req = https.request(options, (res) => {
-      let data = '';
+      const req = https.request(options, (res) => {
+        let data = '';
 
-      res.on('data', (chunk) => {
-        data += chunk;
-      });
+        res.on('data', (chunk) => {
+          data += chunk;
+        });
 
-      res.on('end', () => {
-        try {
-          const result = JSON.parse(data);
-          if (result.errors) {
-            reject(new Error(JSON.stringify(result.errors)));
-          } else {
-            resolve(result.data);
+        res.on('end', () => {
+          try {
+            if (res.statusCode !== 200) {
+              reject(new Error(`GraphQL request failed with status ${res.statusCode}: ${data.substring(0, 500)}`));
+              return;
+            }
+            const result = JSON.parse(data);
+            if (result.errors) {
+              reject(new Error(`GraphQL errors: ${JSON.stringify(result.errors)}`));
+            } else {
+              resolve(result.data);
+            }
+          } catch (error) {
+            reject(new Error(`Failed to parse GraphQL response: ${error.message}. Response: ${data.substring(0, 500)}`));
           }
-        } catch (error) {
-          reject(new Error(`Failed to parse response: ${error.message}`));
-        }
+        });
       });
-    });
 
-    req.on('error', (error) => {
-      reject(error);
-    });
+      req.on('error', (error) => {
+        reject(new Error(`GraphQL request error: ${error.message}`));
+      });
 
-    req.write(postData);
-    req.end();
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new Error('GraphQL request timeout'));
+      });
+
+      req.setTimeout(30000);
+
+      req.write(postData);
+      req.end();
+    } catch (error) {
+      reject(new Error(`Failed to create GraphQL request: ${error.message}`));
+    }
   });
 }
 
@@ -294,6 +317,8 @@ Return a JSON object with the field names exactly as listed above.`;
 
 // Main handler
 exports.handler = async (event) => {
+  console.log('Lambda function invoked. Event:', JSON.stringify(event, null, 2));
+  
   // CORS headers
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -303,7 +328,9 @@ exports.handler = async (event) => {
   };
 
   // Handle CORS preflight
-  if (event.requestContext?.http?.method === 'OPTIONS' || event.httpMethod === 'OPTIONS') {
+  const httpMethod = event.requestContext?.http?.method || event.httpMethod || event.requestContext?.httpMethod;
+  if (httpMethod === 'OPTIONS') {
+    console.log('Handling OPTIONS request');
     return {
       statusCode: 200,
       headers: corsHeaders,
@@ -312,6 +339,7 @@ exports.handler = async (event) => {
   }
 
   try {
+    console.log('Processing request. Method:', httpMethod);
     // Validate environment variables first
     if (!GRAPHQL_ENDPOINT || !GRAPHQL_API_KEY || !S3_BUCKET) {
       console.error('Missing environment variables:', {
@@ -331,7 +359,16 @@ exports.handler = async (event) => {
     // Parse request body
     let bodyData = {};
     if (event.body) {
-      bodyData = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
+      try {
+        bodyData = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
+      } catch (parseError) {
+        console.error('Error parsing request body:', parseError);
+        return {
+          statusCode: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Invalid JSON in request body', details: parseError.message }),
+        };
+      }
     }
 
     const { treeIds, templateId, geminiApiKey } = bodyData;
