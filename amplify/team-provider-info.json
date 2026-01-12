@@ -22,7 +22,7 @@
         },
         "audioToFeatures": {
           "deploymentBucketName": "amplify-tsbeoraculoapi-dev-755cb-deployment",
-          "s3Key": "amplify-builds/audioToFeatures-595535705a79596e6e50-build.zip"
+          "s3Key": "amplify-builds/audioToFeatures-4d5561456d3877694c72-build.zip"
         }
       },
       "api": {

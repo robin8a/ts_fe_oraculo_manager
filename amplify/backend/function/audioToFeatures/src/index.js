@@ -8,7 +8,15 @@ const s3Client = new S3Client({ region: process.env.AWS_REGION || 'us-east-1' })
 // GraphQL endpoint and API key (set via Amplify environment variables from dependsOn)
 const GRAPHQL_ENDPOINT = process.env.API_TSBEORACULOAPI_GRAPHQLAPIENDPOINTOUTPUT;
 const GRAPHQL_API_KEY = process.env.API_TSBEORACULOAPI_GRAPHQLAPIKEYOUTPUT;
-const S3_BUCKET = process.env.STORAGE_S3744E127B_BUCKETNAME;
+
+// Get base bucket name from environment variable
+// Note: Amplify may pass just the base name, but the actual bucket includes stack ID and environment suffix
+// We'll extract the bucket name from S3 URLs when needed, which is more reliable
+const BASE_BUCKET_NAME = process.env.STORAGE_S3744E127B_BUCKETNAME;
+const ENV = process.env.ENV || 'dev';
+
+// Default S3 bucket name - will be overridden by extracting from S3 URLs when available
+const S3_BUCKET = BASE_BUCKET_NAME;
 
 // Validate required environment variables
 if (!GRAPHQL_ENDPOINT || !GRAPHQL_API_KEY || !S3_BUCKET) {
@@ -176,11 +184,59 @@ function isAudioS3Url(valueString) {
   return hasAudioExtension || hasAudioPath;
 }
 
+// Extract S3 bucket name from S3 URL
+function extractS3BucketFromUrl(s3Url) {
+  try {
+    const url = new URL(s3Url);
+    // S3 URL formats:
+    // 1. https://{bucket}.s3.{region}.amazonaws.com/{key}
+    // 2. https://s3.{region}.amazonaws.com/{bucket}/{key}
+    // 3. https://{bucket}.s3-{region}.amazonaws.com/{key}
+    
+    const hostname = url.hostname;
+    
+    // Format 1 & 3: bucket is the first part of the hostname
+    if (hostname.includes('.s3.')) {
+      const parts = hostname.split('.s3.');
+      if (parts.length > 0) {
+        return parts[0];
+      }
+    } else if (hostname.startsWith('s3.') || hostname.startsWith('s3-')) {
+      // Format 2: bucket is the first part of the path
+      const pathParts = url.pathname.split('/').filter(p => p);
+      if (pathParts.length > 0) {
+        return pathParts[0];
+      }
+    }
+    
+    // Fallback: try to extract from hostname before first dot
+    const firstDot = hostname.indexOf('.');
+    if (firstDot > 0) {
+      return hostname.substring(0, firstDot);
+    }
+    
+    throw new Error(`Unable to extract bucket name from URL: ${s3Url}`);
+  } catch (error) {
+    throw new Error(`Unable to extract bucket name from URL: ${s3Url} - ${error.message}`);
+  }
+}
+
 // Extract S3 key from S3 URL
 function extractS3KeyFromUrl(s3Url) {
   try {
     const url = new URL(s3Url);
-    // Remove leading slash from pathname
+    const hostname = url.hostname;
+    
+    // For format 2 (s3.{region}.amazonaws.com/{bucket}/{key}), skip the bucket part
+    if (hostname.startsWith('s3.') || hostname.startsWith('s3-')) {
+      const pathParts = url.pathname.split('/').filter(p => p);
+      if (pathParts.length > 1) {
+        // Skip the bucket name (first part), return the rest as the key
+        return pathParts.slice(1).join('/');
+      }
+    }
+    
+    // For formats 1 & 3, the key is just the pathname (without leading slash)
     return url.pathname.substring(1);
   } catch (error) {
     throw new Error(`Unable to extract S3 key from URL: ${s3Url}`);
@@ -190,11 +246,13 @@ function extractS3KeyFromUrl(s3Url) {
 // Download audio file from S3
 async function downloadAudioFromS3(s3Url) {
   try {
+    // Extract bucket name from the S3 URL (more reliable than using environment variable)
+    const bucketName = extractS3BucketFromUrl(s3Url);
     const s3Key = extractS3KeyFromUrl(s3Url);
-    console.log(`Downloading audio from S3: ${s3Key}`);
+    console.log(`Downloading audio from S3 bucket: ${bucketName}, key: ${s3Key}`);
 
     const command = new GetObjectCommand({
-      Bucket: S3_BUCKET,
+      Bucket: bucketName,
       Key: s3Key,
     });
 
