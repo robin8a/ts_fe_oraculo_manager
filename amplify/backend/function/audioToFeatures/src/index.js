@@ -441,40 +441,21 @@ async function processAudioWithGemini(audioBuffer, features, geminiApiKey) {
   try {
     const genAI = new GoogleGenerativeAI(geminiApiKey);
 
-    // Write buffer to temp file (Gemini File API requires file path)
+    // Write buffer to temp file
     tempFilePath = path.join(os.tmpdir(), `audio_${Date.now()}_${Math.random().toString(36).substring(7)}.mp4`);
     fs.writeFileSync(tempFilePath, audioBuffer);
     console.log(`Written ${audioBuffer.length} bytes to temp file: ${tempFilePath}`);
 
-    // Upload file to Gemini File API
-    console.log('Uploading audio to Gemini File API...');
-    const uploadResult = await genAI.uploadFile(tempFilePath, {
-      mimeType: 'audio/mp4',
-    });
-
-    const uploadedFile = uploadResult.file;
-    console.log(`File uploaded: ${uploadedFile.uri}, name: ${uploadedFile.name}`);
-
-    // Wait for file to be processed
-    let fileStatus = uploadedFile.state;
-    let waitCount = 0;
-    const maxWait = 60; // Max 60 seconds
-    
-    while (fileStatus === 'PROCESSING' && waitCount < maxWait) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      waitCount++;
-      try {
-        const fileInfo = await genAI.getFile(uploadedFile.name);
-        fileStatus = fileInfo.state;
-      } catch (err) {
-        console.warn('Error checking file status:', err.message);
-        break;
-      }
-    }
-
-    if (fileStatus !== 'ACTIVE') {
-      throw new Error(`File processing failed or timed out. Status: ${fileStatus}`);
-    }
+    // For JavaScript SDK, use FileDataPart with the file data
+    // Convert buffer to base64 for inline upload (works for all SDK versions)
+    const base64Audio = audioBuffer.toString('base64');
+    const uploadedFile = {
+      inlineData: {
+        data: base64Audio,
+        mimeType: 'audio/mp4',
+      },
+    };
+    console.log(`Using inline file data (base64 encoded, ${base64Audio.length} chars)`);
 
     // Build prompt with feature names
     const featureDescriptions = features.map(f => 
@@ -502,13 +483,6 @@ Return a JSON object with the field names exactly as listed above.`;
     const extractedData = JSON.parse(response.text());
 
     console.log('Extracted data:', JSON.stringify(extractedData, null, 2));
-
-    // Clean up uploaded file and temp file
-    try {
-      await genAI.deleteFile(uploadedFile.name);
-    } catch (cleanupError) {
-      console.warn('Error deleting uploaded file:', cleanupError.message);
-    }
 
     return extractedData;
   } catch (error) {
