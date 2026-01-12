@@ -1,4 +1,4 @@
-const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, GetObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
 const https = require('https');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
@@ -262,17 +262,140 @@ function extractS3KeyFromUrl(s3Url) {
   }
 }
 
+// Find the actual S3 key by searching for files that match the expected key
+// This handles cases where Amplify Storage adds prefixes like 'protected/{userId}/'
+async function findActualS3Key(bucketName, expectedKey) {
+  try {
+    // Extract the filename from the expected key
+    const filename = expectedKey.split('/').pop();
+    const keyPrefix = expectedKey.substring(0, expectedKey.lastIndexOf('/') + 1);
+    
+    console.log(`Searching for file with prefix: ${keyPrefix}, filename: ${filename}`);
+    
+    // Try different prefixes that Amplify Storage might use
+    const prefixesToTry = [
+      expectedKey, // Try the exact key first
+      `protected/${keyPrefix}${filename}`, // Try with protected prefix (without userId)
+      `public/${keyPrefix}${filename}`, // Try with public prefix
+    ];
+    
+    // Also search by listing objects with the key prefix
+    const listCommand = new ListObjectsV2Command({
+      Bucket: bucketName,
+      Prefix: keyPrefix,
+      MaxKeys: 100,
+    });
+    
+    const listResponse = await s3Client.send(listCommand);
+    
+    if (listResponse.Contents && listResponse.Contents.length > 0) {
+      // Find the object that ends with our filename
+      const matchingObject = listResponse.Contents.find(obj => 
+        obj.Key && obj.Key.endsWith(filename)
+      );
+      
+      if (matchingObject && matchingObject.Key) {
+        console.log(`Found matching object with key: ${matchingObject.Key}`);
+        return matchingObject.Key;
+      }
+    }
+    
+    // If listing didn't work, try the prefixes directly
+    for (const prefix of prefixesToTry) {
+      try {
+        const testCommand = new GetObjectCommand({
+          Bucket: bucketName,
+          Key: prefix,
+        });
+        // Just check if it exists by trying to get metadata
+        await s3Client.send(testCommand);
+        console.log(`Found file with key: ${prefix}`);
+        return prefix;
+      } catch (e) {
+        // Continue to next prefix
+        continue;
+      }
+    }
+    
+    // If still not found, try searching with protected prefix and wildcard userId
+    // List objects starting with 'protected/' and matching the filename
+    const protectedListCommand = new ListObjectsV2Command({
+      Bucket: bucketName,
+      Prefix: 'protected/',
+      MaxKeys: 1000,
+    });
+    
+    const protectedListResponse = await s3Client.send(protectedListCommand);
+    
+    if (protectedListResponse.Contents && protectedListResponse.Contents.length > 0) {
+      const matchingObject = protectedListResponse.Contents.find(obj => 
+        obj.Key && obj.Key.endsWith(filename) && obj.Key.includes(keyPrefix.replace(/^audio\//, ''))
+      );
+      
+      if (matchingObject && matchingObject.Key) {
+        console.log(`Found matching protected object with key: ${matchingObject.Key}`);
+        return matchingObject.Key;
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error searching for S3 key:', error);
+    return null;
+  }
+}
+
 // Download audio file from S3
 async function downloadAudioFromS3(s3Url) {
   try {
     // Extract bucket name from the S3 URL (more reliable than using environment variable)
     const bucketName = extractS3BucketFromUrl(s3Url);
-    const s3Key = extractS3KeyFromUrl(s3Url);
+    let s3Key = extractS3KeyFromUrl(s3Url);
     console.log(`Downloading audio from S3 URL: ${s3Url}`);
     console.log(`Extracted bucket: ${bucketName}, key: ${s3Key}`);
 
-    const command = new GetObjectCommand({
+    // Try to get the object with the extracted key first
+    let command = new GetObjectCommand({
       Bucket: bucketName,
+      Key: s3Key,
+    });
+
+    try {
+      const response = await s3Client.send(command);
+      const chunks = [];
+      
+      return new Promise((resolve, reject) => {
+        response.Body.on('data', (chunk) => {
+          chunks.push(chunk);
+        });
+
+        response.Body.on('end', () => {
+          const buffer = Buffer.concat(chunks);
+          console.log(`Downloaded ${buffer.length} bytes from S3`);
+          resolve(buffer);
+        });
+
+        response.Body.on('error', (error) => {
+          reject(error);
+        });
+      });
+    } catch (firstError) {
+      // If the key doesn't exist, try to find the actual key
+      const isNoSuchKey = firstError.name === 'NoSuchKey' || 
+                         firstError.message.includes('does not exist') || 
+                         firstError.message.includes('NoSuchKey');
+      
+      if (isNoSuchKey) {
+        console.log(`Key not found, searching for actual key...`);
+        const actualKey = await findActualS3Key(bucketName, s3Key);
+        
+        if (actualKey) {
+          console.log(`Using found key: ${actualKey}`);
+          s3Key = actualKey;
+          
+          // Try again with the found key
+          command = new GetObjectCommand({
+            Bucket: bucketName,
       Key: s3Key,
     });
 
@@ -294,17 +417,16 @@ async function downloadAudioFromS3(s3Url) {
         reject(error);
       });
     });
+        } else {
+          throw new Error(`S3 key does not exist and could not be found. Bucket: ${bucketName}, Expected Key: ${s3Key}. Original URL: ${s3Url}`);
+        }
+      } else {
+        throw firstError;
+      }
+    }
   } catch (error) {
     // Provide more detailed error information
     const errorMessage = error.message || String(error);
-    const isNoSuchKey = error.name === 'NoSuchKey' || errorMessage.includes('does not exist') || errorMessage.includes('NoSuchKey');
-    
-    if (isNoSuchKey) {
-      console.error(`S3 key not found. URL: ${s3Url}`);
-      console.error(`Extracted bucket: ${extractS3BucketFromUrl(s3Url)}, key: ${extractS3KeyFromUrl(s3Url)}`);
-      throw new Error(`S3 key does not exist. Bucket: ${extractS3BucketFromUrl(s3Url)}, Key: ${extractS3KeyFromUrl(s3Url)}. Original URL: ${s3Url}`);
-    }
-    
     throw new Error(`Failed to download audio from S3: ${errorMessage}. URL: ${s3Url}`);
   }
 }
