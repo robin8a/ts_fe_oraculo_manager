@@ -15,6 +15,18 @@
     },
     "s3Key": {
       "Type": "String"
+    },
+    "apitsbeoraculoapiGraphQLAPIEndpointOutput": {
+      "Type": "String",
+      "Default": ""
+    },
+    "apitsbeoraculoapiGraphQLAPIKeyOutput": {
+      "Type": "String",
+      "Default": ""
+    },
+    "storages3744e127bBucketName": {
+      "Type": "String",
+      "Default": ""
     }
   },
   "Conditions": {
@@ -69,6 +81,15 @@
             },
             "REGION": {
               "Ref": "AWS::Region"
+            },
+            "API_TSBEORACULOAPI_GRAPHQLAPIENDPOINTOUTPUT": {
+              "Ref": "apitsbeoraculoapiGraphQLAPIEndpointOutput"
+            },
+            "API_TSBEORACULOAPI_GRAPHQLAPIKEYOUTPUT": {
+              "Ref": "apitsbeoraculoapiGraphQLAPIKeyOutput"
+            },
+            "STORAGE_S3744E127B_BUCKETNAME": {
+              "Ref": "storages3744e127bBucketName"
             }
           }
         },

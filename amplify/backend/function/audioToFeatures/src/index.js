@@ -422,11 +422,11 @@ exports.handler = async (event) => {
     // Step 2: Get Trees
     console.log('Fetching trees...');
     const treeFilter = treeIds && treeIds.length > 0
-      ? { id: { in: treeIds } }
-      : {};
+      ? { or: treeIds.map(id => ({ id: { eq: id } })) }
+      : undefined;
     
     const treesData = await graphqlRequest(LIST_TREES_QUERY, {
-      filter: Object.keys(treeFilter).length > 0 ? treeFilter : undefined,
+      filter: treeFilter,
       limit: 1000, // Adjust as needed
     });
 
