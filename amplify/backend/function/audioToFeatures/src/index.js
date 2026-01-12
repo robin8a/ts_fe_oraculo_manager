@@ -234,12 +234,31 @@ function extractS3KeyFromUrl(s3Url) {
         // Skip the bucket name (first part), return the rest as the key
         return pathParts.slice(1).join('/');
       }
+      // If only one part, it might be just the key (unlikely but handle it)
+      if (pathParts.length === 1) {
+        return pathParts[0];
+      }
     }
     
-    // For formats 1 & 3, the key is just the pathname (without leading slash)
-    return url.pathname.substring(1);
+    // For formats 1 & 3 ({bucket}.s3.{region}.amazonaws.com/{key}), 
+    // the key is the pathname without leading slash
+    // Remove query parameters and fragments if present
+    let key = url.pathname;
+    if (key.startsWith('/')) {
+      key = key.substring(1);
+    }
+    
+    // Decode the key in case it's URL encoded
+    try {
+      key = decodeURIComponent(key);
+    } catch (e) {
+      // If decoding fails, use the original key
+      console.warn('Failed to decode S3 key, using as-is:', key);
+    }
+    
+    return key;
   } catch (error) {
-    throw new Error(`Unable to extract S3 key from URL: ${s3Url}`);
+    throw new Error(`Unable to extract S3 key from URL: ${s3Url} - ${error.message}`);
   }
 }
 
@@ -249,7 +268,8 @@ async function downloadAudioFromS3(s3Url) {
     // Extract bucket name from the S3 URL (more reliable than using environment variable)
     const bucketName = extractS3BucketFromUrl(s3Url);
     const s3Key = extractS3KeyFromUrl(s3Url);
-    console.log(`Downloading audio from S3 bucket: ${bucketName}, key: ${s3Key}`);
+    console.log(`Downloading audio from S3 URL: ${s3Url}`);
+    console.log(`Extracted bucket: ${bucketName}, key: ${s3Key}`);
 
     const command = new GetObjectCommand({
       Bucket: bucketName,
@@ -275,7 +295,17 @@ async function downloadAudioFromS3(s3Url) {
       });
     });
   } catch (error) {
-    throw new Error(`Failed to download audio from S3: ${error.message}`);
+    // Provide more detailed error information
+    const errorMessage = error.message || String(error);
+    const isNoSuchKey = error.name === 'NoSuchKey' || errorMessage.includes('does not exist') || errorMessage.includes('NoSuchKey');
+    
+    if (isNoSuchKey) {
+      console.error(`S3 key not found. URL: ${s3Url}`);
+      console.error(`Extracted bucket: ${extractS3BucketFromUrl(s3Url)}, key: ${extractS3KeyFromUrl(s3Url)}`);
+      throw new Error(`S3 key does not exist. Bucket: ${extractS3BucketFromUrl(s3Url)}, Key: ${extractS3KeyFromUrl(s3Url)}. Original URL: ${s3Url}`);
+    }
+    
+    throw new Error(`Failed to download audio from S3: ${errorMessage}. URL: ${s3Url}`);
   }
 }
 
