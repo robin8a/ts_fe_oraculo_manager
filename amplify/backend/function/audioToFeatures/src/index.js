@@ -470,17 +470,44 @@ ${featureDescriptions}
 Return a JSON object with the field names exactly as listed above.`;
 
     // Configure model for JSON output
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash',
-      generationConfig: {
-        responseMimeType: 'application/json',
-      },
-    });
+    // Use stable model names (newer models)
+    const modelNames = [
+      'gemini-2.5-flash',
+      'gemini-3-flash-preview',
+      'gemini-1.5-pro',
+      'gemini-1.5-flash',
+    ];
+    
+    let extractedData;
+    let lastError;
+    
+    for (const modelName of modelNames) {
+      try {
+        console.log(`Attempting to use model: ${modelName}`);
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: {
+            responseMimeType: 'application/json',
+          },
+        });
 
-    console.log('Calling Gemini API to extract features...');
-    const result = await model.generateContent([prompt, uploadedFile]);
-    const response = await result.response;
-    const extractedData = JSON.parse(response.text());
+        console.log('Calling Gemini API to extract features...');
+        const result = await model.generateContent([prompt, uploadedFile]);
+        const response = await result.response;
+        extractedData = JSON.parse(response.text());
+        console.log(`Successfully used model: ${modelName}`);
+        break; // Success, exit loop
+      } catch (modelError) {
+        console.warn(`Model ${modelName} failed: ${modelError.message}`);
+        lastError = modelError;
+        // Continue to next model
+        continue;
+      }
+    }
+    
+    if (!extractedData) {
+      throw new Error(`All model attempts failed. Last error: ${lastError?.message || 'Unknown error'}`);
+    }
 
     console.log('Extracted data:', JSON.stringify(extractedData, null, 2));
 
