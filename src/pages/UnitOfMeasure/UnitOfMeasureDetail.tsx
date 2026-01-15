@@ -12,7 +12,7 @@ import { Modal } from '../../components/ui/Modal';
 export const UnitOfMeasureDetail: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const { unitOfMeasure, loading, error, refetch } = useGetUnitOfMeasure(id || '');
+  const { unitOfMeasure, loading, error } = useGetUnitOfMeasure(id || '');
   const { deleteUnitOfMeasure, loading: deleting } = useDeleteUnitOfMeasure();
   const [deleteModal, setDeleteModal] = useState(false);
 

@@ -147,7 +147,7 @@ export const DeleteProjectTreeFeature: React.FC = () => {
 
       // Count all trees across all projects
       let totalTrees = 0;
-      for (const project of projects) {
+      for (const project of projects as ProjectWithTrees[]) {
         const trees = await fetchAllWithPagination(
           listTrees,
           {
@@ -244,11 +244,11 @@ export const DeleteProjectTreeFeature: React.FC = () => {
       setLoadingTrees(true);
       
       // Fetch all projects first to get their IDs
-      const projects = allProjects.length > 0 ? allProjects : await fetchAllWithPagination(
+      const projects = allProjects.length > 0 ? allProjects : (await fetchAllWithPagination(
         listProjects,
         {},
         (response) => response.data?.listProjects?.items || []
-      );
+      )) as ProjectWithTrees[];
 
       // Collect all trees from all projects sequentially (to avoid too many concurrent requests)
       const allTreesList: (TreeWithFeatures & { projectId: string; projectName: string })[] = [];
@@ -292,7 +292,7 @@ export const DeleteProjectTreeFeature: React.FC = () => {
         } while (projectNextToken && allTreesList.length < endIndex);
 
         // Add trees from this project that fall within the current page range
-        for (const tree of projectTrees) {
+        for (const tree of projectTrees as any[]) {
           if (currentIndex >= startIndex && currentIndex < endIndex) {
             allTreesList.push({
               id: tree.id,
@@ -517,7 +517,7 @@ export const DeleteProjectTreeFeature: React.FC = () => {
             return response.data.listRawData.items || [];
           }
         );
-        for (const rawData of rawDataItems) {
+        for (const rawData of rawDataItems as any[]) {
           await API.graphql({
             query: deleteRawData,
             variables: {
@@ -645,7 +645,7 @@ export const DeleteProjectTreeFeature: React.FC = () => {
           );
 
           // Delete all raw data
-          for (const rawData of rawDataItems) {
+          for (const rawData of rawDataItems as any[]) {
             try {
               await API.graphql({
                 query: deleteRawData,

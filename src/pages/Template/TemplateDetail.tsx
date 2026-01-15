@@ -12,7 +12,7 @@ import { Modal } from '../../components/ui/Modal';
 export const TemplateDetail: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const { template, loading, error, refetch } = useGetTemplate(id || '');
+  const { template, loading, error } = useGetTemplate(id || '');
   const { deleteTemplate, loading: deleting } = useDeleteTemplate();
   const [deleteModal, setDeleteModal] = useState(false);
 
