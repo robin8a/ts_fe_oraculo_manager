@@ -7,7 +7,7 @@ import {
   CubeIcon,
   ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline';
-import type { ProjectWithTrees, TreeWithFeatures, FeatureInfo } from '../types/projectTreeFeature';
+import type { ProjectWithTrees } from '../types/projectTreeFeature';
 import { downloadAudioFileFromS3, isAudioS3Url } from '../services/storageService';
 
 interface ProjectTreeViewProps {
