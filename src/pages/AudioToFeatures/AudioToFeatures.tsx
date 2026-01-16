@@ -58,13 +58,18 @@ export const AudioToFeatures: React.FC = () => {
             rawData: RawDataInfo[];
           }>();
           
-          tree.features.forEach(feature => {
+          // Ensure features array exists
+          const features = tree.features || [];
+          
+          features.forEach(feature => {
+            // Ensure rawData array exists
+            const rawDataArray = feature.rawData || [];
             const nonAudioRawData: RawDataInfo[] = [];
             
-            feature.rawData.forEach(rawData => {
-              if (isAudioS3Url(rawData.valueString)) {
+            rawDataArray.forEach(rawData => {
+              if (rawData.valueString && isAudioS3Url(rawData.valueString)) {
                 audioCount++;
-              } else {
+              } else if (rawData.valueFloat !== null || (rawData.valueString && !isAudioS3Url(rawData.valueString))) {
                 // This is an extracted feature value, not an audio file
                 nonAudioRawData.push(rawData);
               }
@@ -73,7 +78,7 @@ export const AudioToFeatures: React.FC = () => {
             // Only add features that have non-audio RawData entries
             if (nonAudioRawData.length > 0) {
               existingFeaturesMap.set(feature.id, {
-                featureName: feature.name,
+                featureName: feature.name || 'Unnamed Feature',
                 featureId: feature.id,
                 rawData: nonAudioRawData,
               });
@@ -92,7 +97,11 @@ export const AudioToFeatures: React.FC = () => {
         });
       });
       
+      console.log('AudioToFeatures: Processed trees with audio', trees.length);
       setTreesWithAudio(trees);
+    } else if (!projectsLoading && projects.length === 0) {
+      // Reset if no projects
+      setTreesWithAudio([]);
     }
   }, [projects, projectsLoading]);
 
