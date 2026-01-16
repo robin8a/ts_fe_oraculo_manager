@@ -1,7 +1,74 @@
 import { useState, useEffect, useCallback } from 'react';
 import { API } from 'aws-amplify';
-import { listProjects, listTrees, listRawData, listFeatures } from '../graphql/queries';
+import { listFeatures, listProjects } from '../graphql/queries';
 import type { ProjectWithTrees, TreeWithFeatures, FeatureInfo, RawDataInfo } from '../types/projectTreeFeature';
+
+// Enhanced query to get Trees with RawData for a specific project
+const listTreesWithRawData = /* GraphQL */ `
+  query ListTreesWithRawData(
+    $filter: ModelTreeFilterInput
+    $limit: Int
+    $nextToken: String
+  ) {
+    listTrees(filter: $filter, limit: $limit, nextToken: $nextToken) {
+      items {
+        id
+        name
+        are_audios_processed
+        status
+        templateTreesId
+        projectTreesId
+        createdAt
+        updatedAt
+        rawData {
+          items {
+            id
+            name
+            valueFloat
+            valueString
+            start_date
+            end_date
+            treeRawDataId
+            featureRawDatasId
+            createdAt
+            updatedAt
+          }
+          nextToken
+        }
+      }
+      nextToken
+    }
+  }
+`;
+
+// Enhanced query to get TemplateFeatures with feature details
+const listTemplateFeaturesWithDetails = /* GraphQL */ `
+  query ListTemplateFeaturesWithDetails(
+    $filter: ModelTemplateFeatureFilterInput
+    $limit: Int
+    $nextToken: String
+  ) {
+    listTemplateFeatures(filter: $filter, limit: $limit, nextToken: $nextToken) {
+      items {
+        id
+        templateTemplateFeaturesId
+        featureTemplateFeaturesId
+        feature {
+          id
+          feature_type
+          name
+          description
+          feature_group
+          default_value
+          is_float
+          createdAt
+          updatedAt
+        }
+      }
+      nextToken
+    }
+  }
+`;
 
 export interface UseProjectTreeFeatureResult {
   projects: ProjectWithTrees[];
@@ -40,24 +107,44 @@ export function useProjectTreeFeature(treeLimit?: number): UseProjectTreeFeature
         });
       });
 
-      // Step 2: Fetch all Projects
+      // Step 2: Fetch all TemplateFeatures with feature details
+      const templateFeaturesResponse: any = await API.graphql({
+        query: listTemplateFeaturesWithDetails,
+      });
+      const allTemplateFeatures = templateFeaturesResponse.data?.listTemplateFeatures?.items || [];
+      
+      // Group TemplateFeatures by template ID
+      const featuresByTemplate = new Map<string, Set<string>>();
+      allTemplateFeatures.forEach((tf: any) => {
+        if (tf.templateTemplateFeaturesId && tf.featureTemplateFeaturesId) {
+          if (!featuresByTemplate.has(tf.templateTemplateFeaturesId)) {
+            featuresByTemplate.set(tf.templateTemplateFeaturesId, new Set());
+          }
+          featuresByTemplate.get(tf.templateTemplateFeaturesId)!.add(tf.featureTemplateFeaturesId);
+        }
+      });
+
+      // Step 3: Fetch all Projects
       const projectsResponse: any = await API.graphql({
         query: listProjects,
       });
 
       const projectsData = projectsResponse.data?.listProjects?.items || [];
+      console.log('Projects data:', projectsData);
+      console.log('Number of projects:', projectsData.length);
+      
       if (projectsData.length === 0) {
         setProjects([]);
         setLoading(false);
         return;
       }
 
-      // Step 3: For each Project, fetch Trees and then RawData
+      // Step 4: For each Project, fetch Trees with RawData
       const projectsWithTrees: ProjectWithTrees[] = await Promise.all(
         projectsData.map(async (project: any) => {
-          // Fetch Trees for this project
+          // Fetch Trees with RawData for this project
           const treesResponse: any = await API.graphql({
-            query: listTrees,
+            query: listTreesWithRawData,
             variables: {
               filter: {
                 projectTreesId: { eq: project.id },
@@ -68,66 +155,78 @@ export function useProjectTreeFeature(treeLimit?: number): UseProjectTreeFeature
 
           const treesData = treesResponse.data?.listTrees?.items || [];
 
-          // Step 4: For each Tree, fetch RawData and match Features
-          const treesWithFeatures: TreeWithFeatures[] = await Promise.all(
-            treesData.map(async (tree: any) => {
-              // Fetch RawData for this tree
-              const rawDataResponse: any = await API.graphql({
-                query: listRawData,
-                variables: {
-                  filter: {
-                    treeRawDataId: { eq: tree.id },
-                  },
-                },
+        const treesWithFeatures: TreeWithFeatures[] = treesData.map((tree: any) => {
+          // Get rawData items for this tree
+          const rawDataItems = tree.rawData?.items || [];
+          console.log(`Tree ${tree.id} (${tree.name}): ${rawDataItems.length} rawData items`);
+
+          // Group RawData entries by featureId
+          const rawDataByFeature = new Map<string, RawDataInfo[]>();
+          rawDataItems.forEach((rawData: any) => {
+            if (rawData.featureRawDatasId) {
+              const featureId = rawData.featureRawDatasId;
+              if (!rawDataByFeature.has(featureId)) {
+                rawDataByFeature.set(featureId, []);
+              }
+              rawDataByFeature.get(featureId)!.push({
+                id: rawData.id,
+                name: rawData.name || null,
+                valueFloat: rawData.valueFloat || null,
+                valueString: rawData.valueString || null,
+                start_date: rawData.start_date || null,
+                end_date: rawData.end_date || null,
+                createdAt: rawData.createdAt || null,
+                updatedAt: rawData.updatedAt || null,
               });
+            } else {
+              console.warn('RawData item without featureRawDatasId:', rawData.id);
+            }
+          });
 
-              const rawDataItems = rawDataResponse.data?.listRawData?.items || [];
+          // Get features from template if tree has a template
+          const templateFeatureIds = tree.templateTreesId 
+            ? featuresByTemplate.get(tree.templateTreesId) || new Set<string>()
+            : new Set<string>();
 
-              // Group RawData entries by featureId
-              const rawDataByFeature = new Map<string, RawDataInfo[]>();
-              rawDataItems.forEach((rawData: any) => {
-                if (rawData.featureRawDatasId) {
-                  const featureId = rawData.featureRawDatasId;
-                  if (!rawDataByFeature.has(featureId)) {
-                    rawDataByFeature.set(featureId, []);
-                  }
-                  rawDataByFeature.get(featureId)!.push({
-                    id: rawData.id,
-                    name: rawData.name || null,
-                    valueFloat: rawData.valueFloat || null,
-                    valueString: rawData.valueString || null,
-                    start_date: rawData.start_date || null,
-                    end_date: rawData.end_date || null,
-                    createdAt: rawData.createdAt || null,
-                    updatedAt: rawData.updatedAt || null,
-                  });
-                }
+          // Create FeatureInfo objects - include all features from template, merge RawData if available
+          const featuresMapForTree = new Map<string, FeatureInfo>();
+          
+          // First, add all features from the template (even without RawData)
+          templateFeatureIds.forEach((featureId) => {
+            if (featuresMap.has(featureId)) {
+              const featureBase = featuresMap.get(featureId)!;
+              featuresMapForTree.set(featureId, {
+                ...featureBase,
+                rawData: rawDataByFeature.get(featureId) || [],
               });
+            }
+          });
 
-              // Create FeatureInfo objects with their associated RawData
-              const features: FeatureInfo[] = [];
-              rawDataByFeature.forEach((rawDataArray, featureId) => {
-                if (featuresMap.has(featureId)) {
-                  const featureBase = featuresMap.get(featureId)!;
-                  features.push({
-                    ...featureBase,
-                    rawData: rawDataArray,
-                  });
-                }
+          // Also include features that have RawData but might not be in template
+          rawDataByFeature.forEach((rawDataArray, featureId) => {
+            if (featuresMap.has(featureId) && !featuresMapForTree.has(featureId)) {
+              const featureBase = featuresMap.get(featureId)!;
+              featuresMapForTree.set(featureId, {
+                ...featureBase,
+                rawData: rawDataArray,
               });
+            }
+            // If feature already exists (from template), RawData was already set above
+          });
 
-              return {
-                id: tree.id,
-                name: tree.name,
-                status: tree.status || null,
-                projectTreesId: tree.projectTreesId || null,
-                templateTreesId: tree.templateTreesId || null,
-                createdAt: tree.createdAt || null,
-                updatedAt: tree.updatedAt || null,
-                features: features,
-              };
-            })
-          );
+          const features = Array.from(featuresMapForTree.values());
+
+          return {
+            id: tree.id,
+            name: tree.name,
+            status: tree.status || null,
+            projectTreesId: tree.projectTreesId || null,
+            templateTreesId: tree.templateTreesId || null,
+            createdAt: tree.createdAt || null,
+            updatedAt: tree.updatedAt || null,
+            features: features,
+          };
+        });
 
           return {
             id: project.id,

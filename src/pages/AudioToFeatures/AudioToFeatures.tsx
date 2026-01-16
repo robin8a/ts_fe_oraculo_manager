@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeftIcon, MicrophoneIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, MicrophoneIcon, ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { useNavigate } from 'react-router-dom';
 import { useAudioToFeatures } from '../../hooks/useAudioToFeatures';
 import { useListTemplates } from '../../hooks/useTemplate';
@@ -7,6 +7,7 @@ import { useProjectTreeFeature } from '../../hooks/useProjectTreeFeature';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { isAudioS3Url } from '../../services/storageService';
+import type { RawDataInfo } from '../../types/projectTreeFeature';
 
 export const AudioToFeatures: React.FC = () => {
   const navigate = useNavigate();
@@ -22,29 +23,70 @@ export const AudioToFeatures: React.FC = () => {
   });
 
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
-  const [treesWithAudio, setTreesWithAudio] = useState<Array<{ id: string; name: string; audioCount: number }>>([]);
+  const [treesWithAudio, setTreesWithAudio] = useState<Array<{ 
+    id: string; 
+    name: string; 
+    audioCount: number;
+    existingFeatures: Array<{
+      featureName: string;
+      featureId: string;
+      rawData: RawDataInfo[];
+    }>;
+  }>>([]);
+  const [expandedTrees, setExpandedTrees] = useState<Set<string>>(new Set());
 
-  // Calculate trees with audio files
+  // Calculate trees with audio files and existing features
   useEffect(() => {
     if (!projectsLoading && projects.length > 0) {
-      const trees: Array<{ id: string; name: string; audioCount: number }> = [];
+      const trees: Array<{ 
+        id: string; 
+        name: string; 
+        audioCount: number;
+        existingFeatures: Array<{
+          featureName: string;
+          featureId: string;
+          rawData: RawDataInfo[];
+        }>;
+      }> = [];
       
       projects.forEach(project => {
         project.trees.forEach(tree => {
           let audioCount = 0;
+          const existingFeaturesMap = new Map<string, {
+            featureName: string;
+            featureId: string;
+            rawData: RawDataInfo[];
+          }>();
+          
           tree.features.forEach(feature => {
+            const nonAudioRawData: RawDataInfo[] = [];
+            
             feature.rawData.forEach(rawData => {
               if (isAudioS3Url(rawData.valueString)) {
                 audioCount++;
+              } else {
+                // This is an extracted feature value, not an audio file
+                nonAudioRawData.push(rawData);
               }
             });
+            
+            // Only add features that have non-audio RawData entries
+            if (nonAudioRawData.length > 0) {
+              existingFeaturesMap.set(feature.id, {
+                featureName: feature.name,
+                featureId: feature.id,
+                rawData: nonAudioRawData,
+              });
+            }
           });
           
-          if (audioCount > 0) {
+          // Include trees that have audio files OR existing features
+          if (audioCount > 0 || existingFeaturesMap.size > 0) {
             trees.push({
               id: tree.id,
               name: tree.name,
               audioCount,
+              existingFeatures: Array.from(existingFeaturesMap.values()),
             });
           }
         });
@@ -53,6 +95,18 @@ export const AudioToFeatures: React.FC = () => {
       setTreesWithAudio(trees);
     }
   }, [projects, projectsLoading]);
+
+  const toggleTreeExpansion = (treeId: string) => {
+    setExpandedTrees(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(treeId)) {
+        newSet.delete(treeId);
+      } else {
+        newSet.add(treeId);
+      }
+      return newSet;
+    });
+  };
 
   const validate = () => {
     const errors: Record<string, string> = {};
@@ -266,25 +320,97 @@ export const AudioToFeatures: React.FC = () => {
                 </label>
 
                 {!formData.processAllTrees && (
-                  <div className="border border-gray-300 rounded-md p-4 max-h-64 overflow-y-auto">
+                  <div className="border border-gray-300 rounded-md p-4 max-h-96 overflow-y-auto">
                     {treesWithAudio.length === 0 ? (
                       <p className="text-sm text-gray-500">No trees with audio files found</p>
                     ) : (
-                      <div className="space-y-2">
-                        {treesWithAudio.map((tree) => (
-                          <label key={tree.id} className="flex items-center">
-                            <input
-                              type="checkbox"
-                              checked={formData.selectedTreeIds.includes(tree.id)}
-                              onChange={() => handleTreeToggle(tree.id)}
-                              className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                              disabled={loading}
-                            />
-                            <span className="ml-2 text-sm text-gray-700">
-                              {tree.name} ({tree.audioCount} audio file{tree.audioCount !== 1 ? 's' : ''})
-                            </span>
-                          </label>
-                        ))}
+                      <div className="space-y-3">
+                        {treesWithAudio.map((tree) => {
+                          const isExpanded = expandedTrees.has(tree.id);
+                          const hasExistingFeatures = tree.existingFeatures.length > 0;
+                          
+                          return (
+                            <div key={tree.id} className="border border-gray-200 rounded-md p-3 bg-gray-50">
+                              <div className="flex items-start">
+                                <input
+                                  type="checkbox"
+                                  checked={formData.selectedTreeIds.includes(tree.id)}
+                                  onChange={() => handleTreeToggle(tree.id)}
+                                  className="mt-1 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                  disabled={loading}
+                                />
+                                <div className="ml-3 flex-1">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex-1">
+                                      <span className="text-sm font-medium text-gray-900">
+                                        {tree.name}
+                                      </span>
+                                      <div className="mt-1 flex items-center gap-4 text-xs text-gray-600">
+                                        {tree.audioCount > 0 && (
+                                          <span>
+                                            {tree.audioCount} audio file{tree.audioCount !== 1 ? 's' : ''}
+                                          </span>
+                                        )}
+                                        {hasExistingFeatures && (
+                                          <span className="text-primary-600">
+                                            {tree.existingFeatures.length} existing feature{tree.existingFeatures.length !== 1 ? 's' : ''}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    {hasExistingFeatures && (
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleTreeExpansion(tree.id)}
+                                        className="ml-2 text-gray-500 hover:text-gray-700"
+                                        disabled={loading}
+                                      >
+                                        {isExpanded ? (
+                                          <ChevronDownIcon className="h-5 w-5" />
+                                        ) : (
+                                          <ChevronRightIcon className="h-5 w-5" />
+                                        )}
+                                      </button>
+                                    )}
+                                  </div>
+                                  
+                                  {/* Existing Features Display */}
+                                  {isExpanded && hasExistingFeatures && (
+                                    <div className="mt-3 ml-6 space-y-3 border-l-2 border-primary-200 pl-3">
+                                      {tree.existingFeatures.map((feature) => (
+                                        <div key={feature.featureId} className="bg-white rounded p-2 border border-gray-200">
+                                          <div className="font-medium text-sm text-gray-900 mb-1">
+                                            {feature.featureName}
+                                          </div>
+                                          <div className="space-y-1">
+                                            {feature.rawData.map((rawData) => (
+                                              <div key={rawData.id} className="text-xs text-gray-600 flex items-center gap-2">
+                                                <span className="font-medium">Value:</span>
+                                                <span>
+                                                  {rawData.valueFloat !== null && rawData.valueFloat !== undefined
+                                                    ? rawData.valueFloat.toLocaleString()
+                                                    : rawData.valueString || 'N/A'}
+                                                </span>
+                                                {rawData.updatedAt && (
+                                                  <>
+                                                    <span className="text-gray-400">•</span>
+                                                    <span className="text-gray-500">
+                                                      Updated: {new Date(rawData.updatedAt).toLocaleDateString()}
+                                                    </span>
+                                                  </>
+                                                )}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
