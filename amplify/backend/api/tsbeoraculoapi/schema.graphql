@@ -543,6 +543,7 @@ type Template @model {
 type Tree @model {
   id: ID!
   name: String!
+  are_audios_processed: Boolean
   status: String
   project: Project @belongsTo 
   template: Template @belongsTo

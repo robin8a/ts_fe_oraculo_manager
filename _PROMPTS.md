@@ -62,4 +62,4 @@ extracted_data = response.text # This is now a JSON string
 - Show the total audios detected for every tree
 - Show the progress for every tree audio process
 
-
+KoboToolbox Import allow me to set a date day to be process using the field "start"
