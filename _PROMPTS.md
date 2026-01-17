@@ -63,3 +63,5 @@ extracted_data = response.text # This is now a JSON string
 - Show the progress for every tree audio process
 
 KoboToolbox Import allow me to set a date day to be process using the field "start"
+
+There is a new property "are_audios_processed" in the "Tree" entity, after process the audios set in true, and use this property

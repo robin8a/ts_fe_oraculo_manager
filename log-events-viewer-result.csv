@@ -1,0 +1,79 @@
+timestamp,message
+1768572249559,"INIT_START Runtime Version: nodejs:22.v70	Runtime Version ARN: arn:aws:lambda:us-east-1::runtime:fc822b897c0f33df4df3bc8d3c18d7449cfa5d4f32cd596bcfb8080fdefbad43
+"
+1768572249955,"START RequestId: 57d99428-73c9-4aa0-b283-8bd3c4371523 Version: $LATEST
+"
+1768572249960,"2026-01-16T14:04:09.960Z	57d99428-73c9-4aa0-b283-8bd3c4371523	INFO	Lambda function invoked. Event: {
+  ""version"": ""2.0"",
+  ""routeKey"": ""$default"",
+  ""rawPath"": ""/"",
+  ""rawQueryString"": """",
+  ""headers"": {
+    ""sec-fetch-mode"": ""cors"",
+    ""referer"": ""http://localhost:3000/"",
+    ""content-length"": ""161"",
+    ""x-amzn-tls-version"": ""TLSv1.3"",
+    ""sec-fetch-site"": ""cross-site"",
+    ""x-forwarded-proto"": ""https"",
+    ""accept-language"": ""es-US,es;q=0.9,es-419;q=0.8,en;q=0.7"",
+    ""origin"": ""http://localhost:3000"",
+    ""x-forwarded-port"": ""443"",
+    ""x-forwarded-for"": ""200.118.16.68"",
+    ""accept"": ""application/json"",
+    ""x-amzn-tls-cipher-suite"": ""TLS_AES_128_GCM_SHA256"",
+    ""sec-ch-ua"": ""\""Not)A;Brand\"";v=\""8\"", \""Chromium\"";v=\""138\"", \""Google Chrome\"";v=\""138\"""",
+    ""x-amzn-trace-id"": ""Self=1-696a4559-574bf41156b0c2d813090a76;Root=1-696a4559-3cee2d4604ac243d0ac2e93e"",
+    ""sec-ch-ua-mobile"": ""?0"",
+    ""sec-ch-ua-platform"": ""\""macOS\"""",
+    ""host"": ""7jwomzvdytga2ymgjcqfbsgyia0zgpph.lambda-url.us-east-1.on.aws"",
+    ""content-type"": ""application/json"",
+    ""accept-encoding"": ""gzip, deflate, br, zstd"",
+    ""user-agent"": ""Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36"",
+    ""sec-fetch-dest"": ""empty""
+  },
+  ""requestContext"": {
+    ""accountId"": ""anonymous"",
+    ""apiId"": ""7jwomzvdytga2ymgjcqfbsgyia0zgpph"",
+    ""domainName"": ""7jwomzvdytga2ymgjcqfbsgyia0zgpph.lambda-url.us-east-1.on.aws"",
+    ""domainPrefix"": ""7jwomzvdytga2ymgjcqfbsgyia0zgpph"",
+    ""http"": {
+      ""method"": ""POST"",
+      ""path"": ""/"",
+      ""protocol"": ""HTTP/1.1"",
+      ""sourceIp"": ""200.118.16.68"",
+      ""userAgent"": ""Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36""
+    },
+    ""requestId"": ""57d99428-73c9-4aa0-b283-8bd3c4371523"",
+    ""routeKey"": ""$default"",
+    ""stage"": ""$default"",
+    ""time"": ""16/Jan/2026:14:04:09 +0000"",
+    ""timeEpoch"": 1768572249363
+  },
+  ""body"": ""{\""templateId\"":\""6437a6e3-ede9-4795-8be4-aed72a890bc5\"",\""geminiApiKey\"":\""AIzaSyBUutGeQDOwMrWK0FLpBWZM7qTVUq_eHAY\"",\""treeIds\"":[\""7cb6dfb3-7831-49e2-8b0d-71cf40d22f9a\""]}"",
+  ""isBase64Encoded"": false
+}
+"
+1768572249981,"2026-01-16T14:04:09.981Z	57d99428-73c9-4aa0-b283-8bd3c4371523	INFO	Processing request. Method: POST
+"
+1768572249981,"2026-01-16T14:04:09.981Z	57d99428-73c9-4aa0-b283-8bd3c4371523	INFO	Processing audio to features: {
+  treeIds: 1,
+  templateId: '6437a6e3-ede9-4795-8be4-aed72a890bc5',
+  hasGeminiKey: true
+}
+"
+1768572249982,"2026-01-16T14:04:09.982Z	57d99428-73c9-4aa0-b283-8bd3c4371523	INFO	Fetching template and features...
+"
+1768572250849,"2026-01-16T14:04:10.849Z	57d99428-73c9-4aa0-b283-8bd3c4371523	INFO	Found 6 features in template
+"
+1768572250849,"2026-01-16T14:04:10.849Z	57d99428-73c9-4aa0-b283-8bd3c4371523	INFO	Fetching trees...
+"
+1768572251015,"2026-01-16T14:04:11.015Z	57d99428-73c9-4aa0-b283-8bd3c4371523	INFO	Found 1 trees to process
+"
+1768572251015,"2026-01-16T14:04:11.015Z	57d99428-73c9-4aa0-b283-8bd3c4371523	INFO	Processing tree: 7cb6dfb3-7831-49e2-8b0d-71cf40d22f9a (Tree 1062)
+"
+1768572251192,"2026-01-16T14:04:11.192Z	57d99428-73c9-4aa0-b283-8bd3c4371523	INFO	Found 0 audio files for tree 7cb6dfb3-7831-49e2-8b0d-71cf40d22f9a
+"
+1768572251201,"END RequestId: 57d99428-73c9-4aa0-b283-8bd3c4371523
+"
+1768572251201,"REPORT RequestId: 57d99428-73c9-4aa0-b283-8bd3c4371523	Duration: 1245.74 ms	Billed Duration: 1639 ms	Memory Size: 128 MB	Max Memory Used: 98 MB	Init Duration: 392.71 ms	
+"

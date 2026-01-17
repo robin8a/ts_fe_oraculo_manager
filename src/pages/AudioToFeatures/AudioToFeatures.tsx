@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeftIcon, MicrophoneIcon, ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { useNavigate } from 'react-router-dom';
+import { API } from 'aws-amplify';
 import { useAudioToFeatures } from '../../hooks/useAudioToFeatures';
 import { useListTemplates } from '../../hooks/useTemplate';
 import { useProjectTreeFeature } from '../../hooks/useProjectTreeFeature';
+import { updateTree } from '../../graphql/mutations';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { isAudioS3Url } from '../../services/storageService';
@@ -13,7 +15,7 @@ export const AudioToFeatures: React.FC = () => {
   const navigate = useNavigate();
   const { processAudio, loading, error, result } = useAudioToFeatures();
   const { templates, loading: templatesLoading } = useListTemplates();
-  const { projects, loading: projectsLoading } = useProjectTreeFeature();
+  const { projects, loading: projectsLoading, refetch: refetchProjects } = useProjectTreeFeature();
 
   const [formData, setFormData] = useState({
     templateId: '',
@@ -52,6 +54,7 @@ export const AudioToFeatures: React.FC = () => {
       projects.forEach(project => {
         project.trees.forEach(tree => {
           let audioCount = 0;
+          const audioUrls: string[] = [];
           const existingFeaturesMap = new Map<string, {
             featureName: string;
             featureId: string;
@@ -61,17 +64,27 @@ export const AudioToFeatures: React.FC = () => {
           // Ensure features array exists
           const features = tree.features || [];
           
+          console.log(`AudioToFeatures: Processing tree ${tree.id} (${tree.name}), features count: ${features.length}`);
+          
           features.forEach(feature => {
             // Ensure rawData array exists
             const rawDataArray = feature.rawData || [];
             const nonAudioRawData: RawDataInfo[] = [];
             
             rawDataArray.forEach(rawData => {
+              // Check if this is an audio file
               if (rawData.valueString && isAudioS3Url(rawData.valueString)) {
                 audioCount++;
-              } else if (rawData.valueFloat !== null || (rawData.valueString && !isAudioS3Url(rawData.valueString))) {
+                audioUrls.push(rawData.valueString);
+                console.log(`AudioToFeatures: Found audio file in tree ${tree.id}, feature ${feature.name}: ${rawData.valueString.substring(0, 50)}...`);
+              } else {
                 // This is an extracted feature value, not an audio file
-                nonAudioRawData.push(rawData);
+                // Include it if it has any value (float or non-empty string)
+                const hasFloatValue = rawData.valueFloat !== null && rawData.valueFloat !== undefined;
+                const hasStringValue = rawData.valueString && rawData.valueString.trim() !== '';
+                if (hasFloatValue || hasStringValue) {
+                  nonAudioRawData.push(rawData);
+                }
               }
             });
             
@@ -84,6 +97,8 @@ export const AudioToFeatures: React.FC = () => {
               });
             }
           });
+          
+          console.log(`AudioToFeatures: Tree ${tree.id} summary - audioCount: ${audioCount}, existingFeatures: ${existingFeaturesMap.size}`);
           
           // Include trees that have audio files OR existing features
           if (audioCount > 0 || existingFeaturesMap.size > 0) {
@@ -141,13 +156,58 @@ export const AudioToFeatures: React.FC = () => {
       return;
     }
 
-    const params = {
+    // Build params object, only include treeIds if not processing all trees
+    const params: any = {
       templateId: formData.templateId,
       geminiApiKey: formData.geminiApiKey,
-      treeIds: formData.processAllTrees ? undefined : formData.selectedTreeIds,
     };
 
-    await processAudio(params);
+    // Only include treeIds if we're processing specific trees
+    if (!formData.processAllTrees && formData.selectedTreeIds.length > 0) {
+      params.treeIds = formData.selectedTreeIds;
+    }
+
+    console.log('AudioToFeatures: Submitting with params:', {
+      templateId: params.templateId,
+      treeIds: params.treeIds || 'all trees',
+      treeIdsCount: params.treeIds?.length || 'all',
+    });
+
+    const response = await processAudio(params);
+    
+    // Update are_audios_processed flag for successfully processed trees
+    if (response && response.success && response.results) {
+      const treesToUpdate = response.results
+        .filter(treeResult => treeResult.processed > 0 || treeResult.featuresExtracted > 0)
+        .map(treeResult => treeResult.treeId);
+      
+      if (treesToUpdate.length > 0) {
+        console.log('AudioToFeatures: Updating are_audios_processed for trees:', treesToUpdate);
+        
+        // Update each tree asynchronously
+        Promise.all(
+          treesToUpdate.map(async (treeId) => {
+            try {
+              await API.graphql({
+                query: updateTree,
+                variables: {
+                  input: {
+                    id: treeId,
+                    are_audios_processed: true,
+                  },
+                },
+              });
+              console.log(`AudioToFeatures: Updated are_audios_processed for tree ${treeId}`);
+            } catch (err: any) {
+              console.error(`AudioToFeatures: Failed to update tree ${treeId}:`, err);
+            }
+          })
+        ).then(() => {
+          // Refetch projects to update the UI
+          refetchProjects();
+        });
+      }
+    }
   };
 
   const handleChange = (field: string, value: any) => {

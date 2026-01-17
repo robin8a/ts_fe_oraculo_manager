@@ -27,21 +27,33 @@ if (!GRAPHQL_ENDPOINT || !GRAPHQL_API_KEY || !S3_BUCKET) {
   });
 }
 
-// GraphQL queries
-const LIST_TREES_QUERY = `
-  query ListTrees($filter: ModelTreeFilterInput, $limit: Int, $nextToken: String) {
+// GraphQL queries - Using nested query approach like frontend component
+const LIST_TREES_WITH_RAWDATA_QUERY = `
+  query ListTreesWithRawData($filter: ModelTreeFilterInput, $limit: Int, $nextToken: String) {
     listTrees(filter: $filter, limit: $limit, nextToken: $nextToken) {
       items {
         id
         name
         status
         templateTreesId
+        rawData {
+          items {
+            id
+            name
+            valueString
+            valueFloat
+            treeRawDataId
+            featureRawDatasId
+          }
+          nextToken
+        }
       }
       nextToken
     }
   }
 `;
 
+// Keep the old query for backward compatibility if needed
 const LIST_RAWDATA_QUERY = `
   query ListRawData($filter: ModelRawDataFilterInput, $limit: Int, $nextToken: String) {
     listRawData(filter: $filter, limit: $limit, nextToken: $nextToken) {
@@ -263,79 +275,273 @@ function extractS3KeyFromUrl(s3Url) {
 }
 
 // Find the actual S3 key by searching for files that match the expected key
-// This handles cases where Amplify Storage adds prefixes like 'protected/{userId}/'
-async function findActualS3Key(bucketName, expectedKey) {
+// This handles cases where Amplify Storage adds prefixes like 'protected/us-east-1:{userId}/'
+async function findActualS3Key(bucketName, expectedKey, providedTreeId = null) {
   try {
     // Extract the filename from the expected key
     const filename = expectedKey.split('/').pop();
-    const keyPrefix = expectedKey.substring(0, expectedKey.lastIndexOf('/') + 1);
+    const keyPath = expectedKey.substring(0, expectedKey.lastIndexOf('/'));
+    const keyPathParts = keyPath.split('/');
     
-    console.log(`Searching for file with prefix: ${keyPrefix}, filename: ${filename}`);
+    console.log(`Searching for file - expectedKey: ${expectedKey}, filename: ${filename}, keyPath: ${keyPath}`);
+    
+    // Use provided treeId if available, otherwise extract from path
+    let treeId = providedTreeId;
+    const audioIndex = keyPathParts.indexOf('audio');
+    if (!treeId && audioIndex >= 0 && audioIndex < keyPathParts.length - 1) {
+      treeId = keyPathParts[audioIndex + 1];
+      console.log(`Extracted treeId from path: ${treeId}`);
+    } else if (treeId) {
+      console.log(`Using provided treeId: ${treeId}`);
+    }
     
     // Try different prefixes that Amplify Storage might use
     const prefixesToTry = [
       expectedKey, // Try the exact key first
-      `protected/${keyPrefix}${filename}`, // Try with protected prefix (without userId)
-      `public/${keyPrefix}${filename}`, // Try with public prefix
+      `protected/${expectedKey}`, // Try with protected prefix
+      `public/${expectedKey}`, // Try with public prefix
     ];
     
-    // Also search by listing objects with the key prefix
+    // If we have a treeId, search for files with protected/us-east-1:{userId}/audio/{treeId}/... pattern
+    if (treeId) {
+      // The real pattern is: protected/us-east-1:{userId}/audio/{treeId}/audio_levantamiento/{filename}
+      // We need to search for files matching this pattern
+      const pathAfterTreeId = keyPathParts.slice(audioIndex + 2).join('/');
+      console.log(`Path after treeId: ${pathAfterTreeId}`);
+      
+      // Search in protected/ directory for files matching the pattern
+      const protectedPrefix = 'protected/';
+      const protectedListCommand = new ListObjectsV2Command({
+        Bucket: bucketName,
+        Prefix: protectedPrefix,
+        MaxKeys: 10000, // Large limit to search more files
+      });
+      
+      try {
+        console.log(`Searching in protected/ directory for files matching treeId: ${treeId}, filename: ${filename}`);
+        const protectedListResponse = await s3Client.send(protectedListCommand);
+        
+        if (protectedListResponse.Contents && protectedListResponse.Contents.length > 0) {
+          console.log(`Found ${protectedListResponse.Contents.length} objects in protected/ directory`);
+          
+          // Find objects that:
+          // 1. End with our filename (or similar timestamp-based filename)
+          // 2. Match the path structure (audio/{treeId}/audio_levantamiento/...)
+          // Note: treeId might be different, so we match by path structure and filename pattern
+          const pathStructure = pathAfterTreeId ? pathAfterTreeId.split('/')[0] : null; // e.g., "audio_levantamiento"
+          
+          const matchingObjects = protectedListResponse.Contents.filter(obj => {
+            if (!obj.Key) return false;
+            
+            // Must be in the protected/us-east-1:{userId}/audio/{treeId}/... pattern
+            if (!obj.Key.includes('/audio/')) return false;
+            
+            // Must end with our filename OR a similar filename (same extension, similar timestamp)
+            const objFilename = obj.Key.split('/').pop();
+            const objExt = objFilename.split('.').pop();
+            const expectedExt = filename.split('.').pop();
+            
+            // Match if same extension and similar filename structure
+            const filenameMatches = objFilename === filename || 
+                                   (objExt === expectedExt && objFilename.match(/^\d+\./)); // Timestamp-based filenames
+            
+            if (!filenameMatches) return false;
+            
+            // Must contain the path structure (audio_levantamiento or similar)
+            if (pathStructure && !obj.Key.includes(pathStructure)) return false;
+            
+            // Prefer files that match the treeId if available, but don't require it
+            // (since the treeId in the URL might be different from the actual file's treeId)
+            
+            return true;
+          });
+          
+          if (matchingObjects.length > 0) {
+            // Prefer matches in this order:
+            // 1. Exact filename match
+            // 2. Matches with treeId (if provided)
+            // 3. Matches with path structure
+            let bestMatch = matchingObjects.find(obj => obj.Key.endsWith(filename));
+            
+            if (!bestMatch && treeId) {
+              bestMatch = matchingObjects.find(obj => obj.Key.includes(`/audio/${treeId}/`));
+            }
+            
+            if (!bestMatch && pathStructure) {
+              bestMatch = matchingObjects.find(obj => obj.Key.includes(pathStructure));
+            }
+            
+            bestMatch = bestMatch || matchingObjects[0];
+            
+            console.log(`Found ${matchingObjects.length} matching objects, using: ${bestMatch.Key}`);
+            return bestMatch.Key;
+          }
+        }
+      } catch (protectedError) {
+        console.log(`Error searching protected/ directory:`, protectedError.message);
+      }
+    }
+    
+    // First, try listing objects with the key path prefix to find matches
     const listCommand = new ListObjectsV2Command({
       Bucket: bucketName,
-      Prefix: keyPrefix,
+      Prefix: keyPath,
       MaxKeys: 100,
     });
     
-    const listResponse = await s3Client.send(listCommand);
-    
-    if (listResponse.Contents && listResponse.Contents.length > 0) {
-      // Find the object that ends with our filename
-      const matchingObject = listResponse.Contents.find(obj => 
-        obj.Key && obj.Key.endsWith(filename)
-      );
+    try {
+      const listResponse = await s3Client.send(listCommand);
       
-      if (matchingObject && matchingObject.Key) {
-        console.log(`Found matching object with key: ${matchingObject.Key}`);
-        return matchingObject.Key;
+      if (listResponse.Contents && listResponse.Contents.length > 0) {
+        console.log(`Found ${listResponse.Contents.length} objects with prefix ${keyPath}`);
+        // Find the object that ends with our filename
+        const matchingObject = listResponse.Contents.find(obj => 
+          obj.Key && obj.Key.endsWith(filename)
+        );
+        
+        if (matchingObject && matchingObject.Key) {
+          console.log(`Found matching object with key: ${matchingObject.Key}`);
+          return matchingObject.Key;
+        }
       }
+    } catch (listError) {
+      console.log(`Listing with prefix ${keyPath} failed, trying other methods:`, listError.message);
+    }
+    
+    // Try searching in protected/ directory with the filename
+    // Real pattern: protected/us-east-1:{userId}/audio/{treeId}/audio_levantamiento/{filename}
+    const protectedListCommand = new ListObjectsV2Command({
+      Bucket: bucketName,
+      Prefix: 'protected/',
+      MaxKeys: 10000, // Increased limit to search more files
+    });
+    
+    try {
+      const protectedListResponse = await s3Client.send(protectedListCommand);
+      
+      if (protectedListResponse.Contents && protectedListResponse.Contents.length > 0) {
+        console.log(`Found ${protectedListResponse.Contents.length} objects in protected/`);
+        
+        // Extract treeId from expected key path
+        let treeId = null;
+        const audioIndex = keyPathParts.indexOf('audio');
+        if (audioIndex >= 0 && audioIndex < keyPathParts.length - 1) {
+          treeId = keyPathParts[audioIndex + 1];
+        }
+        
+        // Find objects that:
+        // 1. End with our filename
+        // 2. Match the pattern: protected/us-east-1:{userId}/audio/{treeId}/...
+        // 3. Contain the path structure (audio_levantamiento or similar)
+        const pathSearchTerms = keyPathParts.filter(p => p && p !== 'audio' && p.length > 3);
+        const matchingObjects = protectedListResponse.Contents.filter(obj => {
+          if (!obj.Key) return false;
+          
+          // Must end with our filename
+          if (!obj.Key.endsWith(filename)) return false;
+          
+          // Must match the pattern: protected/us-east-1:{userId}/audio/{treeId}/...
+          if (!obj.Key.includes('/audio/')) return false;
+          
+          // If we have a treeId, it must be in the path
+          if (treeId && !obj.Key.includes(`/audio/${treeId}/`)) return false;
+          
+          // Must contain important path parts (like audio_levantamiento)
+          if (pathSearchTerms.length > 0) {
+            const hasPathMatch = pathSearchTerms.some(term => obj.Key.includes(term));
+            if (!hasPathMatch) return false;
+          }
+          
+          return true;
+        });
+        
+        if (matchingObjects.length > 0) {
+          // Prefer the one that matches the treeId most closely
+          const bestMatch = treeId 
+            ? matchingObjects.find(obj => obj.Key.includes(`/audio/${treeId}/`)) || matchingObjects[0]
+            : matchingObjects[0];
+          
+          console.log(`Found ${matchingObjects.length} matching protected objects, using: ${bestMatch.Key}`);
+          return bestMatch.Key;
+        }
+      }
+    } catch (protectedError) {
+      console.log(`Listing protected/ directory failed:`, protectedError.message);
+    }
+    
+    // Try searching in public/ directory
+    const publicListCommand = new ListObjectsV2Command({
+      Bucket: bucketName,
+      Prefix: 'public/',
+      MaxKeys: 1000,
+    });
+    
+    try {
+      const publicListResponse = await s3Client.send(publicListCommand);
+      
+      if (publicListResponse.Contents && publicListResponse.Contents.length > 0) {
+        console.log(`Found ${publicListResponse.Contents.length} objects in public/`);
+        const pathSearchTerms = keyPathParts.filter(p => p && p !== 'audio');
+        const matchingObject = publicListResponse.Contents.find(obj => {
+          if (!obj.Key || !obj.Key.endsWith(filename)) return false;
+          return pathSearchTerms.every(term => obj.Key.includes(term));
+        });
+        
+        if (matchingObject && matchingObject.Key) {
+          console.log(`Found matching public object with key: ${matchingObject.Key}`);
+          return matchingObject.Key;
+        }
+      }
+    } catch (publicError) {
+      console.log(`Listing public/ directory failed:`, publicError.message);
     }
     
     // If listing didn't work, try the prefixes directly
     for (const prefix of prefixesToTry) {
+      // Skip wildcard patterns (they won't work with GetObjectCommand)
+      if (prefix.includes('*')) continue;
+      
       try {
         const testCommand = new GetObjectCommand({
           Bucket: bucketName,
           Key: prefix,
         });
-        // Just check if it exists by trying to get metadata
-        await s3Client.send(testCommand);
-        console.log(`Found file with key: ${prefix}`);
-        return prefix;
+        // Try to get the object (just head would be better but GetObject works)
+        const testResponse = await s3Client.send(testCommand);
+        if (testResponse) {
+          console.log(`Found file with key: ${prefix}`);
+          return prefix;
+        }
       } catch (e) {
         // Continue to next prefix
         continue;
       }
     }
     
-    // If still not found, try searching with protected prefix and wildcard userId
-    // List objects starting with 'protected/' and matching the filename
-    const protectedListCommand = new ListObjectsV2Command({
+    // Last resort: search for the filename anywhere in the bucket
+    console.log(`Last resort: searching for filename ${filename} anywhere in bucket`);
+    const globalSearchCommand = new ListObjectsV2Command({
       Bucket: bucketName,
-      Prefix: 'protected/',
-      MaxKeys: 1000,
+      MaxKeys: 10000, // Large limit to search more files
     });
     
-    const protectedListResponse = await s3Client.send(protectedListCommand);
-    
-    if (protectedListResponse.Contents && protectedListResponse.Contents.length > 0) {
-      const matchingObject = protectedListResponse.Contents.find(obj => 
-        obj.Key && obj.Key.endsWith(filename) && obj.Key.includes(keyPrefix.replace(/^audio\//, ''))
-      );
-      
-      if (matchingObject && matchingObject.Key) {
-        console.log(`Found matching protected object with key: ${matchingObject.Key}`);
-        return matchingObject.Key;
+    try {
+      const globalResponse = await s3Client.send(globalSearchCommand);
+      if (globalResponse.Contents && globalResponse.Contents.length > 0) {
+        const pathSearchTerms = keyPathParts.filter(p => p && p !== 'audio' && p.length > 5);
+        const matchingObject = globalResponse.Contents.find(obj => {
+          if (!obj.Key || !obj.Key.endsWith(filename)) return false;
+          // Match if it contains the important path parts
+          return pathSearchTerms.length === 0 || pathSearchTerms.some(term => obj.Key.includes(term));
+        });
+        
+        if (matchingObject && matchingObject.Key) {
+          console.log(`Found matching object in global search with key: ${matchingObject.Key}`);
+          return matchingObject.Key;
+        }
       }
+    } catch (globalError) {
+      console.log(`Global search failed:`, globalError.message);
     }
     
     return null;
@@ -346,13 +552,16 @@ async function findActualS3Key(bucketName, expectedKey) {
 }
 
 // Download audio file from S3
-async function downloadAudioFromS3(s3Url) {
+async function downloadAudioFromS3(s3Url, treeId = null) {
   try {
     // Extract bucket name from the S3 URL (more reliable than using environment variable)
     const bucketName = extractS3BucketFromUrl(s3Url);
     let s3Key = extractS3KeyFromUrl(s3Url);
     console.log(`Downloading audio from S3 URL: ${s3Url}`);
     console.log(`Extracted bucket: ${bucketName}, key: ${s3Key}`);
+    if (treeId) {
+      console.log(`Using treeId for search: ${treeId}`);
+    }
 
     // Try to get the object with the extracted key first
     let command = new GetObjectCommand({
@@ -386,38 +595,84 @@ async function downloadAudioFromS3(s3Url) {
                          firstError.message.includes('NoSuchKey');
       
       if (isNoSuchKey) {
-        console.log(`Key not found, searching for actual key...`);
-        const actualKey = await findActualS3Key(bucketName, s3Key);
+        console.log(`Key "${s3Key}" not found in bucket "${bucketName}", searching for actual key...`);
+        console.log(`Original URL: ${s3Url}`);
+        const actualKey = await findActualS3Key(bucketName, s3Key, treeId);
         
         if (actualKey) {
-          console.log(`Using found key: ${actualKey}`);
+          console.log(`Successfully found key: ${actualKey}`);
           s3Key = actualKey;
           
           // Try again with the found key
           command = new GetObjectCommand({
             Bucket: bucketName,
-      Key: s3Key,
-    });
+            Key: s3Key,
+          });
 
-    const response = await s3Client.send(command);
-    const chunks = [];
-    
-    return new Promise((resolve, reject) => {
-      response.Body.on('data', (chunk) => {
-        chunks.push(chunk);
-      });
+          const response = await s3Client.send(command);
+          const chunks = [];
+          
+          return new Promise((resolve, reject) => {
+            response.Body.on('data', (chunk) => {
+              chunks.push(chunk);
+            });
 
-      response.Body.on('end', () => {
-        const buffer = Buffer.concat(chunks);
-        console.log(`Downloaded ${buffer.length} bytes from S3`);
-        resolve(buffer);
-      });
+            response.Body.on('end', () => {
+              const buffer = Buffer.concat(chunks);
+              console.log(`Downloaded ${buffer.length} bytes from S3 using key: ${s3Key}`);
+              resolve(buffer);
+            });
 
-      response.Body.on('error', (error) => {
-        reject(error);
-      });
-    });
+            response.Body.on('error', (error) => {
+              reject(error);
+            });
+          });
         } else {
+          // Before throwing error, try one more comprehensive search
+          console.log(`Comprehensive search failed. Attempting final search with filename only...`);
+          const filename = s3Key.split('/').pop();
+          const finalSearchCommand = new ListObjectsV2Command({
+            Bucket: bucketName,
+            MaxKeys: 10000,
+          });
+          
+          try {
+            const finalResponse = await s3Client.send(finalSearchCommand);
+            if (finalResponse.Contents) {
+              const exactMatch = finalResponse.Contents.find(obj => obj.Key && obj.Key.endsWith(filename));
+              if (exactMatch) {
+                console.log(`Found file with exact filename match: ${exactMatch.Key}`);
+                s3Key = exactMatch.Key;
+                
+                command = new GetObjectCommand({
+                  Bucket: bucketName,
+                  Key: s3Key,
+                });
+                
+                const response = await s3Client.send(command);
+                const chunks = [];
+                
+                return new Promise((resolve, reject) => {
+                  response.Body.on('data', (chunk) => {
+                    chunks.push(chunk);
+                  });
+
+                  response.Body.on('end', () => {
+                    const buffer = Buffer.concat(chunks);
+                    console.log(`Downloaded ${buffer.length} bytes from S3 using found key: ${s3Key}`);
+                    resolve(buffer);
+                  });
+
+                  response.Body.on('error', (error) => {
+                    reject(error);
+                  });
+                });
+              }
+            }
+          } catch (finalError) {
+            console.error(`Final search also failed:`, finalError.message);
+          }
+          
           throw new Error(`S3 key does not exist and could not be found. Bucket: ${bucketName}, Expected Key: ${s3Key}. Original URL: ${s3Url}`);
         }
       } else {
@@ -630,13 +885,13 @@ exports.handler = async (event) => {
       };
     }
 
-    // Step 2: Get Trees
-    console.log('Fetching trees...');
+    // Step 2: Get Trees with nested RawData (using same approach as frontend component)
+    console.log('Fetching trees with rawData...');
     const treeFilter = treeIds && treeIds.length > 0
       ? { or: treeIds.map(id => ({ id: { eq: id } })) }
       : undefined;
     
-    const treesData = await graphqlRequest(LIST_TREES_QUERY, {
+    const treesData = await graphqlRequest(LIST_TREES_WITH_RAWDATA_QUERY, {
       filter: treeFilter,
       limit: 1000, // Adjust as needed
     });
@@ -664,16 +919,25 @@ exports.handler = async (event) => {
     for (const tree of trees) {
       console.log(`Processing tree: ${tree.id} (${tree.name})`);
 
-      // Get RawData for this tree
-      const rawDataResponse = await graphqlRequest(LIST_RAWDATA_QUERY, {
-        filter: { treeRawDataId: { eq: tree.id } },
-      });
-
-      const rawDataItems = rawDataResponse.listRawData.items || [];
+      // Get RawData from nested query (same as frontend component)
+      const rawDataItems = tree.rawData?.items || [];
+      console.log(`Tree ${tree.id} has ${rawDataItems.length} rawData items total`);
       
       // Filter for audio files
-      const audioRawData = rawDataItems.filter(rd => isAudioS3Url(rd.valueString));
+      const audioRawData = rawDataItems.filter(rd => rd.valueString && isAudioS3Url(rd.valueString));
       console.log(`Found ${audioRawData.length} audio files for tree ${tree.id}`);
+      
+      // Log some rawData items for debugging
+      if (rawDataItems.length > 0 && audioRawData.length === 0) {
+        console.log(`Debug: Sample rawData items for tree ${tree.id}:`, 
+          rawDataItems.slice(0, 3).map(rd => ({
+            id: rd.id,
+            hasValueString: !!rd.valueString,
+            valueStringPreview: rd.valueString ? rd.valueString.substring(0, 50) : 'null',
+            featureId: rd.featureRawDatasId
+          }))
+        );
+      }
 
       const treeResult = {
         treeId: tree.id,
@@ -689,8 +953,8 @@ exports.handler = async (event) => {
         try {
           console.log(`Processing audio: ${audioRawDataItem.valueString}`);
 
-          // Download audio from S3
-          const audioBuffer = await downloadAudioFromS3(audioRawDataItem.valueString);
+          // Download audio from S3 (pass treeId to help with search)
+          const audioBuffer = await downloadAudioFromS3(audioRawDataItem.valueString, tree.id);
 
           // Process with Gemini
           const extractedData = await processAudioWithGemini(audioBuffer, features, geminiApiKey);
