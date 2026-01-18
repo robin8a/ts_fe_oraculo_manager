@@ -694,6 +694,8 @@ async function processAudioWithGemini(audioBuffer, features, geminiApiKey) {
   let tempFilePath = null;
   
   try {
+    // Initialize Gemini AI with the API key
+    // The SDK will automatically use the latest API version (v1) for newer models
     const genAI = new GoogleGenerativeAI(geminiApiKey);
 
     // Write buffer to temp file
@@ -725,12 +727,13 @@ ${featureDescriptions}
 Return a JSON object with the field names exactly as listed above.`;
 
     // Configure model for JSON output
-    // Use stable model names (newer models)
+    // Use latest stable model names (updated 2026)
+    // Order: Try fastest/cheapest first, then more capable models
     const modelNames = [
-      'gemini-2.5-flash',
-      'gemini-3-flash-preview',
-      'gemini-1.5-pro',
-      'gemini-1.5-flash',
+      'gemini-2.5-flash',           // Latest fast model (recommended)
+      'gemini-2.5-flash-lite',      // Ultra-fast / Low-cost
+      'gemini-3-flash-preview',     // Experimental / Next-Gen
+      'gemini-2.5-pro',             // High Intelligence
     ];
     
     let extractedData;

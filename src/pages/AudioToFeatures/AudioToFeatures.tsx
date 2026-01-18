@@ -36,6 +36,13 @@ export const AudioToFeatures: React.FC = () => {
     }>;
   }>>([]);
   const [expandedTrees, setExpandedTrees] = useState<Set<string>>(new Set());
+  const [treeProgress, setTreeProgress] = useState<Map<string, {
+    status: 'queued' | 'processing' | 'completed' | 'error';
+    processed: number;
+    total: number;
+    featuresExtracted: number;
+    errors: string[];
+  }>>(new Map());
 
   // Calculate trees with audio files and existing features
   useEffect(() => {
@@ -173,40 +180,119 @@ export const AudioToFeatures: React.FC = () => {
       treeIdsCount: params.treeIds?.length || 'all',
     });
 
-    const response = await processAudio(params);
+    // Initialize progress for all trees that will be processed
+    const treesToProcess = formData.processAllTrees 
+      ? treesWithAudio.map(t => t.id)
+      : formData.selectedTreeIds;
     
-    // Update are_audios_processed flag for successfully processed trees
-    if (response && response.success && response.results) {
-      const treesToUpdate = response.results
-        .filter(treeResult => treeResult.processed > 0 || treeResult.featuresExtracted > 0)
-        .map(treeResult => treeResult.treeId);
+    const initialProgress = new Map<string, {
+      status: 'queued' | 'processing' | 'completed' | 'error';
+      processed: number;
+      total: number;
+      featuresExtracted: number;
+      errors: string[];
+    }>();
+    
+    treesToProcess.forEach(treeId => {
+      const tree = treesWithAudio.find(t => t.id === treeId);
+      initialProgress.set(treeId, {
+        status: 'queued',
+        processed: 0,
+        total: tree?.audioCount || 0,
+        featuresExtracted: 0,
+        errors: [],
+      });
+    });
+    
+    setTreeProgress(initialProgress);
+    
+    // Update all trees to processing status
+    setTimeout(() => {
+      setTreeProgress(prev => {
+        const updated = new Map(prev);
+        treesToProcess.forEach(treeId => {
+          const current = updated.get(treeId);
+          if (current) {
+            updated.set(treeId, { ...current, status: 'processing' });
+          }
+        });
+        return updated;
+      });
+    }, 100);
+
+    try {
+      const response = await processAudio(params);
       
-      if (treesToUpdate.length > 0) {
-        console.log('AudioToFeatures: Updating are_audios_processed for trees:', treesToUpdate);
-        
-        // Update each tree asynchronously
-        Promise.all(
-          treesToUpdate.map(async (treeId) => {
-            try {
-              await API.graphql({
-                query: updateTree,
-                variables: {
-                  input: {
-                    id: treeId,
-                    are_audios_processed: true,
-                  },
-                },
-              });
-              console.log(`AudioToFeatures: Updated are_audios_processed for tree ${treeId}`);
-            } catch (err: any) {
-              console.error(`AudioToFeatures: Failed to update tree ${treeId}:`, err);
-            }
-          })
-        ).then(() => {
-          // Refetch projects to update the UI
-          refetchProjects();
+      // Update progress with results
+      if (response && response.results) {
+        setTreeProgress(prev => {
+          const updated = new Map(prev);
+          response.results.forEach(treeResult => {
+            updated.set(treeResult.treeId, {
+              status: treeResult.errors.length > 0 ? 'error' : 'completed',
+              processed: treeResult.processed,
+              total: treeResult.audioCount,
+              featuresExtracted: treeResult.featuresExtracted,
+              errors: treeResult.errors,
+            });
+          });
+          return updated;
         });
       }
+      
+      // Update are_audios_processed flag for successfully processed trees
+      if (response && response.success && response.results) {
+        const treesToUpdate = response.results
+          .filter(treeResult => treeResult.processed > 0 || treeResult.featuresExtracted > 0)
+          .map(treeResult => treeResult.treeId);
+        
+        if (treesToUpdate.length > 0) {
+          console.log('AudioToFeatures: Updating are_audios_processed for trees:', treesToUpdate);
+          
+          // Update each tree asynchronously
+          Promise.all(
+            treesToUpdate.map(async (treeId) => {
+              try {
+                await API.graphql({
+                  query: updateTree,
+                  variables: {
+                    input: {
+                      id: treeId,
+                      are_audios_processed: true,
+                    },
+                  },
+                });
+                console.log(`AudioToFeatures: Updated are_audios_processed for tree ${treeId}`);
+              } catch (err: any) {
+                console.error(`AudioToFeatures: Failed to update tree ${treeId}:`, err);
+              }
+            })
+          ).then(() => {
+            // Refetch projects to update the UI
+            refetchProjects();
+          });
+        }
+      }
+      
+      return response;
+    } catch (err) {
+      // On error, mark all trees as error
+      setTreeProgress(prev => {
+        const updated = new Map(prev);
+        treesToProcess.forEach(treeId => {
+          const current = updated.get(treeId);
+          if (current) {
+            updated.set(treeId, {
+              ...current,
+              status: 'error',
+              errors: [err instanceof Error ? err.message : 'Unknown error'],
+            });
+          }
+        });
+        return updated;
+      });
+      // Re-throw to let the error handler in the hook handle it
+      throw err;
     }
   };
 
@@ -257,6 +343,79 @@ export const AudioToFeatures: React.FC = () => {
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
           <p className="text-red-800 font-medium">Error</p>
           <p className="text-red-600 mt-1 whitespace-pre-wrap">{error}</p>
+        </div>
+      )}
+
+      {/* Progress Display */}
+      {loading && treeProgress.size > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
+          <p className="text-blue-800 font-medium text-lg mb-4">Processing Trees...</p>
+          <div className="space-y-3 max-h-96 overflow-y-auto">
+            {Array.from(treeProgress.entries()).map(([treeId, progress]) => {
+              const tree = treesWithAudio.find(t => t.id === treeId);
+              const progressPercent = progress.total > 0 
+                ? Math.round((progress.processed / progress.total) * 100) 
+                : 0;
+              
+              return (
+                <div key={treeId} className="bg-white rounded-lg p-4 border border-blue-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex-1">
+                      <p className="font-medium text-gray-900">{tree?.name || 'Unknown Tree'}</p>
+                      <div className="flex items-center gap-4 mt-1 text-sm text-gray-600">
+                        <span>
+                          {progress.processed}/{progress.total} audio files
+                        </span>
+                        {progress.status === 'processing' && (
+                          <span className="flex items-center gap-1 text-blue-600">
+                            <span className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></span>
+                            Processing...
+                          </span>
+                        )}
+                        {progress.status === 'completed' && (
+                          <span className="text-green-600">
+                            ✓ {progress.featuresExtracted} features extracted
+                          </span>
+                        )}
+                        {progress.status === 'error' && (
+                          <span className="text-red-600">
+                            ✗ {progress.errors.length} error(s)
+                          </span>
+                        )}
+                        {progress.status === 'queued' && (
+                          <span className="text-gray-500">Queued...</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="ml-4 text-right">
+                      <span className="text-sm font-medium text-gray-700">{progressPercent}%</span>
+                    </div>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className={`h-2 rounded-full transition-all duration-300 ${
+                        progress.status === 'completed' ? 'bg-green-500' :
+                        progress.status === 'error' ? 'bg-red-500' :
+                        progress.status === 'processing' ? 'bg-blue-500' :
+                        'bg-gray-400'
+                      }`}
+                      style={{ width: `${progressPercent}%` }}
+                    ></div>
+                  </div>
+                  {progress.errors.length > 0 && (
+                    <details className="mt-2">
+                      <summary className="text-xs text-red-700 cursor-pointer">Show errors</summary>
+                      <ul className="mt-1 text-xs text-red-600 list-disc list-inside">
+                        {progress.errors.map((err, idx) => (
+                          <li key={idx}>{err}</li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -397,37 +556,78 @@ export const AudioToFeatures: React.FC = () => {
                         {treesWithAudio.map((tree) => {
                           const isExpanded = expandedTrees.has(tree.id);
                           const hasExistingFeatures = tree.existingFeatures.length > 0;
+                          const progress = treeProgress.get(tree.id);
+                          const isProcessing = progress && (progress.status === 'processing' || progress.status === 'queued');
                           
                           return (
-                            <div key={tree.id} className="border border-gray-200 rounded-md p-3 bg-gray-50">
+                            <div key={tree.id} className={`border rounded-md p-3 ${
+                              isProcessing ? 'border-blue-300 bg-blue-50' : 'border-gray-200 bg-gray-50'
+                            }`}>
                               <div className="flex items-start">
                                 <input
                                   type="checkbox"
                                   checked={formData.selectedTreeIds.includes(tree.id)}
                                   onChange={() => handleTreeToggle(tree.id)}
                                   className="mt-1 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                                  disabled={loading}
+                                  disabled={loading || isProcessing}
                                 />
                                 <div className="ml-3 flex-1">
                                   <div className="flex items-center justify-between">
                                     <div className="flex-1">
-                                      <span className="text-sm font-medium text-gray-900">
-                                        {tree.name}
-                                      </span>
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-sm font-medium text-gray-900">
+                                          {tree.name}
+                                        </span>
+                                        {progress && (
+                                          <span className={`text-xs px-2 py-0.5 rounded ${
+                                            progress.status === 'completed' ? 'bg-green-100 text-green-700' :
+                                            progress.status === 'error' ? 'bg-red-100 text-red-700' :
+                                            progress.status === 'processing' ? 'bg-blue-100 text-blue-700' :
+                                            'bg-gray-100 text-gray-700'
+                                          }`}>
+                                            {progress.status === 'completed' && '✓ Completed'}
+                                            {progress.status === 'error' && '✗ Error'}
+                                            {progress.status === 'processing' && 'Processing...'}
+                                            {progress.status === 'queued' && 'Queued'}
+                                          </span>
+                                        )}
+                                      </div>
                                       <div className="mt-1 flex items-center gap-4 text-xs text-gray-600">
                                         {tree.audioCount > 0 && (
                                           <span>
-                                            {tree.audioCount} audio file{tree.audioCount !== 1 ? 's' : ''}
+                                            {progress ? `${progress.processed}/${tree.audioCount}` : tree.audioCount} audio file{tree.audioCount !== 1 ? 's' : ''}
                                           </span>
                                         )}
-                                        {hasExistingFeatures && (
+                                        {progress && progress.featuresExtracted > 0 && (
+                                          <span className="text-green-600">
+                                            {progress.featuresExtracted} features extracted
+                                          </span>
+                                        )}
+                                        {hasExistingFeatures && !progress && (
                                           <span className="text-primary-600">
                                             {tree.existingFeatures.length} existing feature{tree.existingFeatures.length !== 1 ? 's' : ''}
                                           </span>
                                         )}
                                       </div>
+                                      {progress && progress.total > 0 && (
+                                        <div className="mt-2">
+                                          <div className="w-full bg-gray-200 rounded-full h-1.5">
+                                            <div
+                                              className={`h-1.5 rounded-full transition-all duration-300 ${
+                                                progress.status === 'completed' ? 'bg-green-500' :
+                                                progress.status === 'error' ? 'bg-red-500' :
+                                                progress.status === 'processing' ? 'bg-blue-500' :
+                                                'bg-gray-400'
+                                              }`}
+                                              style={{ 
+                                                width: `${Math.round((progress.processed / progress.total) * 100)}%` 
+                                              }}
+                                            ></div>
+                                          </div>
+                                        </div>
+                                      )}
                                     </div>
-                                    {hasExistingFeatures && (
+                                    {hasExistingFeatures && !isProcessing && (
                                       <button
                                         type="button"
                                         onClick={() => toggleTreeExpansion(tree.id)}
@@ -440,6 +640,11 @@ export const AudioToFeatures: React.FC = () => {
                                           <ChevronRightIcon className="h-5 w-5" />
                                         )}
                                       </button>
+                                    )}
+                                    {isProcessing && (
+                                      <div className="ml-2">
+                                        <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 inline-block"></span>
+                                      </div>
                                     )}
                                   </div>
                                   
