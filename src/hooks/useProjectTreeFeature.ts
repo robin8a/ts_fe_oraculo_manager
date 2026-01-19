@@ -216,16 +216,17 @@ export function useProjectTreeFeature(treeLimit?: number): UseProjectTreeFeature
 
           const features = Array.from(featuresMapForTree.values());
 
-          return {
-            id: tree.id,
-            name: tree.name,
-            status: tree.status || null,
-            projectTreesId: tree.projectTreesId || null,
-            templateTreesId: tree.templateTreesId || null,
-            createdAt: tree.createdAt || null,
-            updatedAt: tree.updatedAt || null,
-            features: features,
-          };
+              return {
+                id: tree.id,
+                name: tree.name,
+                status: tree.status || null,
+                are_audios_processed: tree.are_audios_processed || null,
+                projectTreesId: tree.projectTreesId || null,
+                templateTreesId: tree.templateTreesId || null,
+                createdAt: tree.createdAt || null,
+                updatedAt: tree.updatedAt || null,
+                features: features,
+              };
         });
 
           return {

@@ -60,6 +60,13 @@ export const AudioToFeatures: React.FC = () => {
       
       projects.forEach(project => {
         project.trees.forEach(tree => {
+          // Only show trees that haven't been processed yet (are_audios_processed is false or null)
+          const isProcessed = tree.are_audios_processed === true;
+          if (isProcessed) {
+            console.log(`AudioToFeatures: Skipping tree ${tree.id} (${tree.name}) - already processed`);
+            return; // Skip this tree
+          }
+          
           let audioCount = 0;
           const audioUrls: string[] = [];
           const existingFeaturesMap = new Map<string, {
@@ -119,7 +126,7 @@ export const AudioToFeatures: React.FC = () => {
         });
       });
       
-      console.log('AudioToFeatures: Processed trees with audio', trees.length);
+      console.log(`AudioToFeatures: Found ${trees.length} unprocessed trees with audio files`);
       setTreesWithAudio(trees);
     } else if (!projectsLoading && projects.length === 0) {
       // Reset if no projects
@@ -550,7 +557,9 @@ export const AudioToFeatures: React.FC = () => {
                 {!formData.processAllTrees && (
                   <div className="border border-gray-300 rounded-md p-4 max-h-96 overflow-y-auto">
                     {treesWithAudio.length === 0 ? (
-                      <p className="text-sm text-gray-500">No trees with audio files found</p>
+                      <p className="text-sm text-gray-500">
+                        {projectsLoading ? 'Loading trees...' : 'No unprocessed trees with audio files found. All trees have been processed.'}
+                      </p>
                     ) : (
                       <div className="space-y-3">
                         {treesWithAudio.map((tree) => {

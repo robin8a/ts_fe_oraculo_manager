@@ -26,6 +26,7 @@ export interface TreeWithFeatures {
   id: string;
   name: string;
   status: string | null;
+  are_audios_processed: boolean | null;
   projectTreesId: string | null;
   templateTreesId: string | null;
   createdAt: string | null;
