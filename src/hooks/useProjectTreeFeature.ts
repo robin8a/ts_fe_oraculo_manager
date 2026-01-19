@@ -77,7 +77,7 @@ export interface UseProjectTreeFeatureResult {
   refetch: () => Promise<void>;
 }
 
-export function useProjectTreeFeature(treeLimit?: number): UseProjectTreeFeatureResult {
+export function useProjectTreeFeature(treeLimit?: number, unprocessedOnly?: boolean): UseProjectTreeFeatureResult {
   const [projects, setProjects] = useState<ProjectWithTrees[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -142,20 +142,49 @@ export function useProjectTreeFeature(treeLimit?: number): UseProjectTreeFeature
       // Step 4: For each Project, fetch Trees with RawData
       const projectsWithTrees: ProjectWithTrees[] = await Promise.all(
         projectsData.map(async (project: any) => {
-          // Fetch Trees with RawData for this project
-          const treesResponse: any = await API.graphql({
-            query: listTreesWithRawData,
-            variables: {
-              filter: {
-                projectTreesId: { eq: project.id },
+          // Build filter - include unprocessed filter if requested
+          let filter: any = {
+            projectTreesId: { eq: project.id },
+          };
+          
+          // If unprocessedOnly is true, filter for trees where are_audios_processed is false or null
+          if (unprocessedOnly) {
+            filter = {
+              and: [
+                { projectTreesId: { eq: project.id } },
+                {
+                  or: [
+                    { are_audios_processed: { eq: false } },
+                    { are_audios_processed: { attributeExists: false } },
+                  ],
+                },
+              ],
+            };
+          }
+          
+          // Fetch Trees with RawData for this project using pagination
+          const allTreesData: any[] = [];
+          let nextToken: string | null | undefined = undefined;
+          const pageSize = 100; // Always fetch 100 at a time
+
+          do {
+            const treesResponse: any = await API.graphql({
+              query: listTreesWithRawData,
+              variables: {
+                filter,
+                limit: pageSize,
+                nextToken: nextToken || undefined,
               },
-              limit: treeLimit || undefined,
-            },
-          });
+            });
 
-          const treesData = treesResponse.data?.listTrees?.items || [];
+            const pageTrees = treesResponse.data?.listTrees?.items || [];
+            allTreesData.push(...pageTrees);
+            nextToken = treesResponse.data?.listTrees?.nextToken;
+          } while (nextToken);
 
-        const treesWithFeatures: TreeWithFeatures[] = treesData.map((tree: any) => {
+          const totalTreeCount = allTreesData.length;
+
+        const treesWithFeatures: TreeWithFeatures[] = allTreesData.map((tree: any) => {
           // Get rawData items for this tree
           const rawDataItems = tree.rawData?.items || [];
           console.log(`Tree ${tree.id} (${tree.name}): ${rawDataItems.length} rawData items`);
@@ -216,17 +245,17 @@ export function useProjectTreeFeature(treeLimit?: number): UseProjectTreeFeature
 
           const features = Array.from(featuresMapForTree.values());
 
-              return {
-                id: tree.id,
-                name: tree.name,
-                status: tree.status || null,
-                are_audios_processed: tree.are_audios_processed || null,
-                projectTreesId: tree.projectTreesId || null,
-                templateTreesId: tree.templateTreesId || null,
-                createdAt: tree.createdAt || null,
-                updatedAt: tree.updatedAt || null,
-                features: features,
-              };
+          return {
+            id: tree.id,
+            name: tree.name,
+            status: tree.status || null,
+            are_audios_processed: tree.are_audios_processed || null,
+            projectTreesId: tree.projectTreesId || null,
+            templateTreesId: tree.templateTreesId || null,
+            createdAt: tree.createdAt || null,
+            updatedAt: tree.updatedAt || null,
+            features: features,
+          };
         });
 
           return {
@@ -236,6 +265,7 @@ export function useProjectTreeFeature(treeLimit?: number): UseProjectTreeFeature
             createdAt: project.createdAt || null,
             updatedAt: project.updatedAt || null,
             trees: treesWithFeatures,
+            totalTreeCount: totalTreeCount,
           };
         })
       );
@@ -249,7 +279,7 @@ export function useProjectTreeFeature(treeLimit?: number): UseProjectTreeFeature
     } finally {
       setLoading(false);
     }
-  }, [treeLimit]);
+  }, [treeLimit, unprocessedOnly]);
 
   useEffect(() => {
     fetchData();

@@ -41,5 +41,6 @@ export interface ProjectWithTrees {
   createdAt: string | null;
   updatedAt: string | null;
   trees: TreeWithFeatures[];
+  totalTreeCount: number;
 }
 

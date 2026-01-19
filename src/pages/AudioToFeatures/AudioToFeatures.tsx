@@ -18,7 +18,7 @@ export const AudioToFeatures: React.FC = () => {
   
   const [treeLimit, setTreeLimit] = useState<number>(100);
   const [loadingMoreTrees, setLoadingMoreTrees] = useState(false);
-  const { projects, loading: projectsLoading, refetch: refetchProjects } = useProjectTreeFeature(treeLimit);
+  const { projects, loading: projectsLoading, refetch: refetchProjects } = useProjectTreeFeature(treeLimit, true); // true = unprocessed only
 
   const [formData, setFormData] = useState({
     templateId: '',
@@ -40,6 +40,11 @@ export const AudioToFeatures: React.FC = () => {
   }>>([]);
   const [expandedTrees, setExpandedTrees] = useState<Set<string>>(new Set());
   const [batchProcessing, setBatchProcessing] = useState(false);
+  const [treeStats, setTreeStats] = useState<{
+    total: number;
+    processed: number;
+    unprocessed: number;
+  }>({ total: 0, processed: 0, unprocessed: 0 });
   const [treeProgress, setTreeProgress] = useState<Map<string, {
     status: 'queued' | 'processing' | 'completed' | 'error';
     processed: number;
@@ -619,6 +624,38 @@ export const AudioToFeatures: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Trees to Process
               </label>
+              
+              {/* Tree Statistics */}
+              {treeStats.total > 0 && (
+                <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-gray-700">Processing Status</span>
+                    <span className="text-xs text-gray-500">
+                      {treeStats.processed} / {treeStats.total} trees processed
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3 mb-2">
+                    <div
+                      className="bg-green-500 h-3 rounded-full transition-all duration-300"
+                      style={{ 
+                        width: `${treeStats.total > 0 ? Math.round((treeStats.processed / treeStats.total) * 100) : 0}%` 
+                      }}
+                    ></div>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-gray-600">
+                    <span>
+                      <span className="font-medium text-green-700">{treeStats.processed}</span> processed
+                    </span>
+                    <span>
+                      <span className="font-medium text-blue-700">{treeStats.unprocessed}</span> remaining
+                    </span>
+                    <span>
+                      <span className="font-medium text-gray-700">{treeStats.total}</span> total
+                    </span>
+                  </div>
+                </div>
+              )}
+              
               <div className="space-y-3">
                 <label className="flex items-center">
                   <input

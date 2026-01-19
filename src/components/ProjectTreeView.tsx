@@ -168,7 +168,7 @@ export const ProjectTreeView: React.FC<ProjectTreeViewProps> = ({ projects, load
                       Status: {project.status}
                       {hasTrees && (
                         <span className="ml-2">
-                          ({project.trees.length} {project.trees.length === 1 ? 'tree' : 'trees'})
+                          ({project.trees.length} of {project.totalTreeCount} {project.totalTreeCount === 1 ? 'tree' : 'trees'})
                         </span>
                       )}
                     </div>
