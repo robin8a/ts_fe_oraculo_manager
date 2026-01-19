@@ -36,6 +36,7 @@ export const AudioToFeatures: React.FC = () => {
     }>;
   }>>([]);
   const [expandedTrees, setExpandedTrees] = useState<Set<string>>(new Set());
+  const [batchProcessing, setBatchProcessing] = useState(false);
   const [treeProgress, setTreeProgress] = useState<Map<string, {
     status: 'queued' | 'processing' | 'completed' | 'error';
     processed: number;
@@ -170,28 +171,21 @@ export const AudioToFeatures: React.FC = () => {
       return;
     }
 
-    // Build params object, only include treeIds if not processing all trees
-    const params: any = {
-      templateId: formData.templateId,
-      geminiApiKey: formData.geminiApiKey,
-    };
+    // Set batch processing state
+    setBatchProcessing(true);
 
-    // Only include treeIds if we're processing specific trees
-    if (!formData.processAllTrees && formData.selectedTreeIds.length > 0) {
-      params.treeIds = formData.selectedTreeIds;
-    }
-
-    console.log('AudioToFeatures: Submitting with params:', {
-      templateId: params.templateId,
-      treeIds: params.treeIds || 'all trees',
-      treeIdsCount: params.treeIds?.length || 'all',
-    });
-
-    // Initialize progress for all trees that will be processed
+    // Determine which trees to process
     const treesToProcess = formData.processAllTrees 
       ? treesWithAudio.map(t => t.id)
       : formData.selectedTreeIds;
-    
+
+    console.log('AudioToFeatures: Processing trees sequentially:', {
+      templateId: formData.templateId,
+      treeIdsCount: treesToProcess.length,
+      treeIds: treesToProcess,
+    });
+
+    // Initialize progress for all trees that will be processed
     const initialProgress = new Map<string, {
       status: 'queued' | 'processing' | 'completed' | 'error';
       processed: number;
@@ -212,94 +206,167 @@ export const AudioToFeatures: React.FC = () => {
     });
     
     setTreeProgress(initialProgress);
+
+    // Aggregate results from all trees
+    const allResults: Array<{
+      treeId: string;
+      treeName: string;
+      audioCount: number;
+      processed: number;
+      errors: string[];
+      featuresExtracted: number;
+    }> = [];
     
-    // Update all trees to processing status
-    setTimeout(() => {
-      setTreeProgress(prev => {
-        const updated = new Map(prev);
-        treesToProcess.forEach(treeId => {
-          const current = updated.get(treeId);
-          if (current) {
-            updated.set(treeId, { ...current, status: 'processing' });
-          }
-        });
-        return updated;
-      });
-    }, 100);
+    let totalProcessed = 0;
+    let totalErrors = 0;
+    let totalFeaturesExtracted = 0;
 
     try {
-      const response = await processAudio(params);
+      // Process each tree sequentially
+      for (let i = 0; i < treesToProcess.length; i++) {
+      const treeId = treesToProcess[i];
+      const tree = treesWithAudio.find(t => t.id === treeId);
       
-      // Update progress with results
-      if (response && response.results) {
-        setTreeProgress(prev => {
-          const updated = new Map(prev);
-          response.results.forEach(treeResult => {
-            updated.set(treeResult.treeId, {
+      // Mark tree as processing
+      setTreeProgress(prev => {
+        const updated = new Map(prev);
+        const current = updated.get(treeId);
+        if (current) {
+          updated.set(treeId, { ...current, status: 'processing' });
+        }
+        return updated;
+      });
+
+      try {
+        console.log(`AudioToFeatures: Processing tree ${i + 1}/${treesToProcess.length}: ${tree?.name || treeId}`);
+        
+        // Call processAudio with single tree ID
+        const params = {
+          templateId: formData.templateId,
+          geminiApiKey: formData.geminiApiKey,
+          treeIds: [treeId], // Process one tree at a time
+        };
+
+        const response = await processAudio(params);
+        
+        if (response && response.results && response.results.length > 0) {
+          const treeResult = response.results[0]; // Should only have one result
+          
+          // Update progress for this tree
+          setTreeProgress(prev => {
+            const updated = new Map(prev);
+            updated.set(treeId, {
               status: treeResult.errors.length > 0 ? 'error' : 'completed',
               processed: treeResult.processed,
               total: treeResult.audioCount,
               featuresExtracted: treeResult.featuresExtracted,
               errors: treeResult.errors,
             });
+            return updated;
+          });
+
+          // Add to aggregated results
+          allResults.push(treeResult);
+          totalProcessed += treeResult.processed;
+          totalErrors += treeResult.errors.length;
+          totalFeaturesExtracted += treeResult.featuresExtracted;
+
+          // Update are_audios_processed flag for successfully processed tree
+          if (treeResult.processed > 0 || treeResult.featuresExtracted > 0) {
+            try {
+              await API.graphql({
+                query: updateTree,
+                variables: {
+                  input: {
+                    id: treeId,
+                    are_audios_processed: true,
+                  },
+                },
+              });
+              console.log(`AudioToFeatures: Updated are_audios_processed for tree ${treeId}`);
+            } catch (err: any) {
+              console.error(`AudioToFeatures: Failed to update tree ${treeId}:`, err);
+            }
+          }
+        } else {
+          // No results returned, mark as error
+          const errorMsg = 'No results returned from processing';
+          setTreeProgress(prev => {
+            const updated = new Map(prev);
+            updated.set(treeId, {
+              status: 'error',
+              processed: 0,
+              total: tree?.audioCount || 0,
+              featuresExtracted: 0,
+              errors: [errorMsg],
+            });
+            return updated;
+          });
+          
+          allResults.push({
+            treeId,
+            treeName: tree?.name || 'Unknown Tree',
+            audioCount: tree?.audioCount || 0,
+            processed: 0,
+            errors: [errorMsg],
+            featuresExtracted: 0,
+          });
+          totalErrors++;
+        }
+      } catch (err) {
+        // Error processing this tree, but continue with others
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        console.error(`AudioToFeatures: Error processing tree ${treeId}:`, err);
+        
+        setTreeProgress(prev => {
+          const updated = new Map(prev);
+          updated.set(treeId, {
+            status: 'error',
+            processed: 0,
+            total: tree?.audioCount || 0,
+            featuresExtracted: 0,
+            errors: [errorMessage],
           });
           return updated;
         });
-      }
-      
-      // Update are_audios_processed flag for successfully processed trees
-      if (response && response.success && response.results) {
-        const treesToUpdate = response.results
-          .filter(treeResult => treeResult.processed > 0 || treeResult.featuresExtracted > 0)
-          .map(treeResult => treeResult.treeId);
-        
-        if (treesToUpdate.length > 0) {
-          console.log('AudioToFeatures: Updating are_audios_processed for trees:', treesToUpdate);
-          
-          // Update each tree asynchronously
-          Promise.all(
-            treesToUpdate.map(async (treeId) => {
-              try {
-                await API.graphql({
-                  query: updateTree,
-                  variables: {
-                    input: {
-                      id: treeId,
-                      are_audios_processed: true,
-                    },
-                  },
-                });
-                console.log(`AudioToFeatures: Updated are_audios_processed for tree ${treeId}`);
-              } catch (err: any) {
-                console.error(`AudioToFeatures: Failed to update tree ${treeId}:`, err);
-              }
-            })
-          ).then(() => {
-            // Refetch projects to update the UI
-            refetchProjects();
-          });
-        }
-      }
-      
-      return response;
-    } catch (err) {
-      // On error, mark all trees as error
-      setTreeProgress(prev => {
-        const updated = new Map(prev);
-        treesToProcess.forEach(treeId => {
-          const current = updated.get(treeId);
-          if (current) {
-            updated.set(treeId, {
-              ...current,
-              status: 'error',
-              errors: [err instanceof Error ? err.message : 'Unknown error'],
-            });
-          }
+
+        allResults.push({
+          treeId,
+          treeName: tree?.name || 'Unknown Tree',
+          audioCount: tree?.audioCount || 0,
+          processed: 0,
+          errors: [errorMessage],
+          featuresExtracted: 0,
         });
-        return updated;
-      });
-      // Re-throw to let the error handler in the hook handle it
+        totalErrors++;
+      }
+    }
+
+    // After all trees are processed, create aggregated response
+    const aggregatedResponse = {
+      success: true,
+      message: `Processed ${treesToProcess.length} trees with ${totalProcessed} audio files processed and ${totalErrors} errors`,
+      results: allResults,
+      summary: {
+        totalTrees: treesToProcess.length,
+        totalAudioFiles: allResults.reduce((sum, r) => sum + r.audioCount, 0),
+        totalProcessed,
+        totalErrors,
+        totalFeaturesExtracted,
+      },
+    };
+
+    // Refetch projects to update the UI
+    refetchProjects();
+    
+    return aggregatedResponse;
+    } catch (err) {
+      // Handle any unexpected errors during batch processing
+      console.error('AudioToFeatures: Unexpected error during batch processing:', err);
       throw err;
+    } finally {
+      // Always clear batch processing state
+      setBatchProcessing(false);
     }
   };
 
@@ -505,7 +572,7 @@ export const AudioToFeatures: React.FC = () => {
                 className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
                   formErrors.templateId ? 'border-red-300' : 'border-gray-300'
                 }`}
-                disabled={templatesLoading || loading}
+                disabled={templatesLoading || batchProcessing}
               >
                 <option value="">Select a template...</option>
                 {templates.map((template) => (
@@ -578,7 +645,7 @@ export const AudioToFeatures: React.FC = () => {
                                   checked={formData.selectedTreeIds.includes(tree.id)}
                                   onChange={() => handleTreeToggle(tree.id)}
                                   className="mt-1 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                                  disabled={loading || isProcessing}
+                                  disabled={batchProcessing || isProcessing}
                                 />
                                 <div className="ml-3 flex-1">
                                   <div className="flex items-center justify-between">
@@ -708,10 +775,10 @@ export const AudioToFeatures: React.FC = () => {
             <div className="flex justify-end">
               <Button
                 type="submit"
-                disabled={loading || templatesLoading || projectsLoading}
+                disabled={batchProcessing || templatesLoading || projectsLoading}
                 className="min-w-[120px]"
               >
-                {loading ? (
+                {batchProcessing ? (
                   <>
                     <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2 inline-block"></span>
                     Processing...
