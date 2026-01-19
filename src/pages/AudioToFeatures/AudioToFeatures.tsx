@@ -15,7 +15,10 @@ export const AudioToFeatures: React.FC = () => {
   const navigate = useNavigate();
   const { processAudio, loading, error, result } = useAudioToFeatures();
   const { templates, loading: templatesLoading } = useListTemplates();
-  const { projects, loading: projectsLoading, refetch: refetchProjects } = useProjectTreeFeature();
+  
+  const [treeLimit, setTreeLimit] = useState<number>(100);
+  const [loadingMoreTrees, setLoadingMoreTrees] = useState(false);
+  const { projects, loading: projectsLoading, refetch: refetchProjects } = useProjectTreeFeature(treeLimit);
 
   const [formData, setFormData] = useState({
     templateId: '',
@@ -145,6 +148,15 @@ export const AudioToFeatures: React.FC = () => {
       }
       return newSet;
     });
+  };
+
+  const handleLoadMoreTrees = async () => {
+    setLoadingMoreTrees(true);
+    // Increase the limit by 100 to load the next batch
+    const newLimit = treeLimit + 100;
+    setTreeLimit(newLimit);
+    // The hook will automatically refetch when treeLimit changes
+    // The loadingMoreTrees state will be cleared by the useEffect when projects finish loading
   };
 
   const validate = () => {
@@ -767,6 +779,28 @@ export const AudioToFeatures: React.FC = () => {
                 )}
                 {formErrors.selectedTreeIds && (
                   <p className="text-sm text-red-600">{formErrors.selectedTreeIds}</p>
+                )}
+                
+                {/* Load More Trees Button */}
+                {!formData.processAllTrees && treesWithAudio.length > 0 && (
+                  <div className="mt-4 flex justify-center">
+                    <Button
+                      type="button"
+                      onClick={handleLoadMoreTrees}
+                      disabled={loadingMoreTrees || projectsLoading || batchProcessing}
+                      variant="outline"
+                      isLoading={loadingMoreTrees}
+                      className="min-w-[150px]"
+                    >
+                      Load More Trees (+100)
+                    </Button>
+                  </div>
+                )}
+                {treesWithAudio.length > 0 && (
+                  <p className="text-xs text-gray-500 text-center mt-2">
+                    Showing {treesWithAudio.length} unprocessed tree{treesWithAudio.length !== 1 ? 's' : ''} with audio files
+                    {treeLimit > 100 && ` (loaded ${treeLimit} per project)`}
+                  </p>
                 )}
               </div>
             </div>
