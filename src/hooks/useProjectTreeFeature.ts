@@ -183,10 +183,21 @@ export function useProjectTreeFeature(treeLimit?: number, unprocessedOnly?: bool
           } while (nextToken);
 
           const totalTreeCount = allTreesData.length;
+          
+          // Count processed and unprocessed trees
+          let processedAudioCount = 0;
+          let unprocessedAudioCount = 0;
+          allTreesData.forEach((tree: any) => {
+            if (tree.are_audios_processed === true) {
+              processedAudioCount++;
+            } else {
+              unprocessedAudioCount++;
+            }
+          });
 
-        const treesWithFeatures: TreeWithFeatures[] = allTreesData.map((tree: any) => {
-          // Get rawData items for this tree
-          const rawDataItems = tree.rawData?.items || [];
+          const treesWithFeatures: TreeWithFeatures[] = allTreesData.map((tree: any) => {
+            // Get rawData items for this tree
+            const rawDataItems = tree.rawData?.items || [];
           console.log(`Tree ${tree.id} (${tree.name}): ${rawDataItems.length} rawData items`);
 
           // Group RawData entries by featureId
@@ -210,42 +221,42 @@ export function useProjectTreeFeature(treeLimit?: number, unprocessedOnly?: bool
             } else {
               console.warn('RawData item without featureRawDatasId:', rawData.id);
             }
-          });
+            });
 
-          // Get features from template if tree has a template
-          const templateFeatureIds = tree.templateTreesId 
-            ? featuresByTemplate.get(tree.templateTreesId) || new Set<string>()
-            : new Set<string>();
+            // Get features from template if tree has a template
+            const templateFeatureIds = tree.templateTreesId 
+              ? featuresByTemplate.get(tree.templateTreesId) || new Set<string>()
+              : new Set<string>();
 
-          // Create FeatureInfo objects - include all features from template, merge RawData if available
-          const featuresMapForTree = new Map<string, FeatureInfo>();
-          
-          // First, add all features from the template (even without RawData)
-          templateFeatureIds.forEach((featureId) => {
-            if (featuresMap.has(featureId)) {
-              const featureBase = featuresMap.get(featureId)!;
-              featuresMapForTree.set(featureId, {
-                ...featureBase,
-                rawData: rawDataByFeature.get(featureId) || [],
-              });
-            }
-          });
+            // Create FeatureInfo objects - include all features from template, merge RawData if available
+            const featuresMapForTree = new Map<string, FeatureInfo>();
+            
+            // First, add all features from the template (even without RawData)
+            templateFeatureIds.forEach((featureId) => {
+              if (featuresMap.has(featureId)) {
+                const featureBase = featuresMap.get(featureId)!;
+                featuresMapForTree.set(featureId, {
+                  ...featureBase,
+                  rawData: rawDataByFeature.get(featureId) || [],
+                });
+              }
+            });
 
-          // Also include features that have RawData but might not be in template
-          rawDataByFeature.forEach((rawDataArray, featureId) => {
-            if (featuresMap.has(featureId) && !featuresMapForTree.has(featureId)) {
-              const featureBase = featuresMap.get(featureId)!;
-              featuresMapForTree.set(featureId, {
-                ...featureBase,
-                rawData: rawDataArray,
-              });
-            }
-            // If feature already exists (from template), RawData was already set above
-          });
+            // Also include features that have RawData but might not be in template
+            rawDataByFeature.forEach((rawDataArray, featureId) => {
+              if (featuresMap.has(featureId) && !featuresMapForTree.has(featureId)) {
+                const featureBase = featuresMap.get(featureId)!;
+                featuresMapForTree.set(featureId, {
+                  ...featureBase,
+                  rawData: rawDataArray,
+                });
+              }
+              // If feature already exists (from template), RawData was already set above
+            });
 
-          const features = Array.from(featuresMapForTree.values());
+            const features = Array.from(featuresMapForTree.values());
 
-          return {
+            return {
             id: tree.id,
             name: tree.name,
             status: tree.status || null,
@@ -266,6 +277,8 @@ export function useProjectTreeFeature(treeLimit?: number, unprocessedOnly?: bool
             updatedAt: project.updatedAt || null,
             trees: treesWithFeatures,
             totalTreeCount: totalTreeCount,
+            processedAudioCount: processedAudioCount,
+            unprocessedAudioCount: unprocessedAudioCount,
           };
         })
       );

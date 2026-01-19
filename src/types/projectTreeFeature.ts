@@ -42,5 +42,7 @@ export interface ProjectWithTrees {
   updatedAt: string | null;
   trees: TreeWithFeatures[];
   totalTreeCount: number;
+  processedAudioCount: number;
+  unprocessedAudioCount: number;
 }
 
