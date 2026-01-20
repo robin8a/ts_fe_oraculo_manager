@@ -270,22 +270,25 @@ export const AudioToFeatures: React.FC = () => {
           const treeResult = response.results[0]; // Should only have one result
           
           // Update progress for this tree
+          const progressUpdate = {
+            status: (treeResult.errors && treeResult.errors.length > 0) ? 'error' : 'completed',
+            processed: treeResult.processed,
+            total: treeResult.audioCount,
+            featuresExtracted: treeResult.featuresExtracted,
+            errors: treeResult.errors || [],
+          };
+          console.log(`AudioToFeatures: Updating progress for tree ${treeId}:`, progressUpdate);
+          
           setTreeProgress(prev => {
             const updated = new Map(prev);
-            updated.set(treeId, {
-              status: treeResult.errors.length > 0 ? 'error' : 'completed',
-              processed: treeResult.processed,
-              total: treeResult.audioCount,
-              featuresExtracted: treeResult.featuresExtracted,
-              errors: treeResult.errors,
-            });
+            updated.set(treeId, progressUpdate);
             return updated;
           });
 
           // Add to aggregated results
           allResults.push(treeResult);
           totalProcessed += treeResult.processed;
-          totalErrors += treeResult.errors.length;
+          totalErrors += (treeResult.errors?.length || 0);
           totalFeaturesExtracted += treeResult.featuresExtracted;
 
           // Update are_audios_processed flag for successfully processed tree
@@ -360,6 +363,18 @@ export const AudioToFeatures: React.FC = () => {
     }
 
     // After all trees are processed, create aggregated response
+    console.log('AudioToFeatures: Creating aggregated response:', {
+      totalTrees: treesToProcess.length,
+      totalProcessed,
+      totalErrors,
+      allResults: allResults.map(r => ({
+        treeId: r.treeId,
+        treeName: r.treeName,
+        errors: r.errors,
+        errorsLength: r.errors?.length || 0,
+      })),
+    });
+    
     const aggregatedResponse = {
       success: true,
       message: `Processed ${treesToProcess.length} trees with ${totalProcessed} audio files processed and ${totalErrors} errors`,
@@ -493,15 +508,16 @@ export const AudioToFeatures: React.FC = () => {
                       style={{ width: `${progressPercent}%` }}
                     ></div>
                   </div>
-                  {progress.errors.length > 0 && (
-                    <details className="mt-2">
-                      <summary className="text-xs text-red-700 cursor-pointer">Show errors</summary>
-                      <ul className="mt-1 text-xs text-red-600 list-disc list-inside">
-                        {progress.errors.map((err, idx) => (
-                          <li key={idx}>{err}</li>
-                        ))}
+                  {progress.errors && progress.errors.length > 0 && (
+                    <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded">
+                      <p className="text-xs font-medium text-red-700 mb-1">Errors:</p>
+                      <ul className="mt-1 text-xs text-red-600 list-disc list-inside space-y-0.5">
+                        {progress.errors.map((err, idx) => {
+                          console.log(`AudioToFeatures: Progress display error ${idx} for tree ${treeId}:`, err);
+                          return <li key={idx}>{err}</li>;
+                        })}
                       </ul>
-                    </details>
+                    </div>
                   )}
                 </div>
               );
@@ -510,6 +526,23 @@ export const AudioToFeatures: React.FC = () => {
         </div>
       )}
 
+      {(() => {
+        if (result) {
+          console.log('AudioToFeatures: Result object:', {
+            success: result.success,
+            resultsLength: result.results?.length || 0,
+            results: result.results?.map(r => ({
+              treeId: r.treeId,
+              treeName: r.treeName,
+              errors: r.errors,
+              errorsLength: r.errors?.length || 0,
+            })),
+            summary: result.summary,
+            fullResult: result,
+          });
+        }
+        return null;
+      })()}
       {result && result.success && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-6 mb-6">
           <p className="text-green-800 font-medium text-lg mb-4">Processing Completed Successfully!</p>
@@ -537,36 +570,47 @@ export const AudioToFeatures: React.FC = () => {
               <div className="mt-4">
                 <p className="text-sm font-medium text-green-800 mb-2">Per-Tree Results:</p>
                 <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {result.results.map((treeResult) => (
-                    <div key={treeResult.treeId} className="bg-white rounded p-3 border border-green-200">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <p className="font-medium text-gray-900">{treeResult.treeName}</p>
-                          <p className="text-sm text-gray-600">
-                            {treeResult.processed}/{treeResult.audioCount} audio files processed
-                          </p>
-                          <p className="text-sm text-green-700">
-                            {treeResult.featuresExtracted} features extracted
-                          </p>
+                  {result.results.map((treeResult) => {
+                    console.log('AudioToFeatures: Rendering tree result:', {
+                      treeId: treeResult.treeId,
+                      treeName: treeResult.treeName,
+                      errors: treeResult.errors,
+                      errorsLength: treeResult.errors?.length || 0,
+                      errorsType: typeof treeResult.errors,
+                      errorsIsArray: Array.isArray(treeResult.errors),
+                    });
+                    return (
+                      <div key={treeResult.treeId} className="bg-white rounded p-3 border border-green-200">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-medium text-gray-900">{treeResult.treeName}</p>
+                            <p className="text-sm text-gray-600">
+                              {treeResult.processed}/{treeResult.audioCount} audio files processed
+                            </p>
+                            <p className="text-sm text-green-700">
+                              {treeResult.featuresExtracted} features extracted
+                            </p>
+                          </div>
+                          {treeResult.errors && treeResult.errors.length > 0 && (
+                            <span className="text-xs text-red-600 bg-red-50 px-2 py-1 rounded">
+                              {treeResult.errors.length} error(s)
+                            </span>
+                          )}
                         </div>
-                        {treeResult.errors.length > 0 && (
-                          <span className="text-xs text-red-600 bg-red-50 px-2 py-1 rounded">
-                            {treeResult.errors.length} error(s)
-                          </span>
+                        {treeResult.errors && treeResult.errors.length > 0 && (
+                          <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded">
+                            <p className="text-xs font-medium text-red-700 mb-1">Errors:</p>
+                            <ul className="mt-1 text-xs text-red-600 list-disc list-inside">
+                              {treeResult.errors.map((err, idx) => {
+                                console.log(`AudioToFeatures: Rendering error ${idx}:`, err);
+                                return <li key={idx}>{err}</li>;
+                              })}
+                            </ul>
+                          </div>
                         )}
                       </div>
-                      {treeResult.errors.length > 0 && (
-                        <details className="mt-2">
-                          <summary className="text-xs text-red-700 cursor-pointer">Show errors</summary>
-                          <ul className="mt-1 text-xs text-red-600 list-disc list-inside">
-                            {treeResult.errors.map((err, idx) => (
-                              <li key={idx}>{err}</li>
-                            ))}
-                          </ul>
-                        </details>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -699,22 +743,29 @@ export const AudioToFeatures: React.FC = () => {
                                 <div className="ml-3 flex-1">
                                   <div className="flex items-center justify-between">
                                     <div className="flex-1">
-                                      <div className="flex items-center gap-2">
+                                      <div className="flex items-center gap-2 flex-wrap">
                                         <span className="text-sm font-medium text-gray-900">
                                           {tree.name}
                                         </span>
                                         {progress && (
-                                          <span className={`text-xs px-2 py-0.5 rounded ${
-                                            progress.status === 'completed' ? 'bg-green-100 text-green-700' :
-                                            progress.status === 'error' ? 'bg-red-100 text-red-700' :
-                                            progress.status === 'processing' ? 'bg-blue-100 text-blue-700' :
-                                            'bg-gray-100 text-gray-700'
-                                          }`}>
-                                            {progress.status === 'completed' && '✓ Completed'}
-                                            {progress.status === 'error' && '✗ Error'}
-                                            {progress.status === 'processing' && 'Processing...'}
-                                            {progress.status === 'queued' && 'Queued'}
-                                          </span>
+                                          <>
+                                            <span className={`text-xs px-2 py-0.5 rounded ${
+                                              progress.status === 'completed' ? 'bg-green-100 text-green-700' :
+                                              progress.status === 'error' ? 'bg-red-100 text-red-700' :
+                                              progress.status === 'processing' ? 'bg-blue-100 text-blue-700' :
+                                              'bg-gray-100 text-gray-700'
+                                            }`}>
+                                              {progress.status === 'completed' && '✓ Completed'}
+                                              {progress.status === 'error' && '✗ Error'}
+                                              {progress.status === 'processing' && 'Processing...'}
+                                              {progress.status === 'queued' && 'Queued'}
+                                            </span>
+                                            {progress.errors && progress.errors.length > 0 && (
+                                              <span className="text-xs text-red-600 bg-red-50 px-2 py-0.5 rounded border border-red-200">
+                                                {progress.errors.length} error{progress.errors.length !== 1 ? 's' : ''}
+                                              </span>
+                                            )}
+                                          </>
                                         )}
                                       </div>
                                       <div className="mt-1 flex items-center gap-4 text-xs text-gray-600">
@@ -749,6 +800,17 @@ export const AudioToFeatures: React.FC = () => {
                                               }}
                                             ></div>
                                           </div>
+                                        </div>
+                                      )}
+                                      {progress && progress.errors && progress.errors.length > 0 && (
+                                        <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded">
+                                          <p className="text-xs font-medium text-red-700 mb-1">Errors:</p>
+                                          <ul className="text-xs text-red-600 list-disc list-inside space-y-0.5">
+                                            {progress.errors.map((err, idx) => {
+                                              console.log(`AudioToFeatures: Tree selection error ${idx} for tree ${tree.id}:`, err);
+                                              return <li key={idx}>{err}</li>;
+                                            })}
+                                          </ul>
                                         </div>
                                       )}
                                     </div>
