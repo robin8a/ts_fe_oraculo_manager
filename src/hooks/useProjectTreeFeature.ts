@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { API } from 'aws-amplify';
-import { listFeatures, listProjects } from '../graphql/queries';
+import { listFeatures, listProjects, listRawData } from '../graphql/queries';
 import type { ProjectWithTrees, TreeWithFeatures, FeatureInfo, RawDataInfo } from '../types/projectTreeFeature';
 
 // Enhanced query to get Trees with RawData for a specific project
@@ -183,6 +183,7 @@ export function useProjectTreeFeature(treeLimit?: number, unprocessedOnly?: bool
           } while (nextToken);
 
           const totalTreeCount = allTreesData.length;
+          console.log(`Project ${project.name}: Fetched ${totalTreeCount} trees`);
           
           // Count processed and unprocessed trees
           let processedAudioCount = 0;
@@ -195,79 +196,135 @@ export function useProjectTreeFeature(treeLimit?: number, unprocessedOnly?: bool
             }
           });
 
-          const treesWithFeatures: TreeWithFeatures[] = allTreesData.map((tree: any) => {
-            // Get rawData items for this tree
-            const rawDataItems = tree.rawData?.items || [];
-          console.log(`Tree ${tree.id} (${tree.name}): ${rawDataItems.length} rawData items`);
+          // Process trees with error handling and nested rawData pagination
+          const treesWithFeatures: TreeWithFeatures[] = [];
+          let processedCount = 0;
+          let errorCount = 0;
 
-          // Group RawData entries by featureId
-          const rawDataByFeature = new Map<string, RawDataInfo[]>();
-          rawDataItems.forEach((rawData: any) => {
-            if (rawData.featureRawDatasId) {
-              const featureId = rawData.featureRawDatasId;
-              if (!rawDataByFeature.has(featureId)) {
-                rawDataByFeature.set(featureId, []);
+          for (const tree of allTreesData) {
+            try {
+              // Get initial rawData items from nested query
+              let rawDataItems = tree.rawData?.items || [];
+              let rawDataNextToken = tree.rawData?.nextToken;
+
+              // Fetch additional pages of rawData if needed
+              if (rawDataNextToken) {
+                console.log(`Tree ${tree.id} (${tree.name}): Has paginated rawData, fetching additional pages...`);
+                const allRawDataItems = [...rawDataItems];
+                
+                while (rawDataNextToken) {
+                  try {
+                    const rawDataResponse: any = await API.graphql({
+                      query: listRawData,
+                      variables: {
+                        filter: { treeRawDataId: { eq: tree.id } },
+                        limit: 1000, // Maximum items per page
+                        nextToken: rawDataNextToken,
+                      },
+                    });
+
+                    const pageRawData = rawDataResponse.data?.listRawData?.items || [];
+                    allRawDataItems.push(...pageRawData);
+                    rawDataNextToken = rawDataResponse.data?.listRawData?.nextToken;
+                  } catch (rawDataErr: any) {
+                    console.error(`Error fetching rawData pagination for tree ${tree.id}:`, rawDataErr);
+                    // Continue with what we have so far
+                    break;
+                  }
+                }
+                
+                rawDataItems = allRawDataItems;
+                console.log(`Tree ${tree.id} (${tree.name}): Fetched ${rawDataItems.length} total rawData items (including pagination)`);
+              } else {
+                console.log(`Tree ${tree.id} (${tree.name}): ${rawDataItems.length} rawData items (no pagination needed)`);
               }
-              rawDataByFeature.get(featureId)!.push({
-                id: rawData.id,
-                name: rawData.name || null,
-                valueFloat: rawData.valueFloat || null,
-                valueString: rawData.valueString || null,
-                start_date: rawData.start_date || null,
-                end_date: rawData.end_date || null,
-                createdAt: rawData.createdAt || null,
-                updatedAt: rawData.updatedAt || null,
+
+              // Group RawData entries by featureId
+              const rawDataByFeature = new Map<string, RawDataInfo[]>();
+              rawDataItems.forEach((rawData: any) => {
+                if (rawData.featureRawDatasId) {
+                  const featureId = rawData.featureRawDatasId;
+                  if (!rawDataByFeature.has(featureId)) {
+                    rawDataByFeature.set(featureId, []);
+                  }
+                  rawDataByFeature.get(featureId)!.push({
+                    id: rawData.id,
+                    name: rawData.name || null,
+                    valueFloat: rawData.valueFloat || null,
+                    valueString: rawData.valueString || null,
+                    start_date: rawData.start_date || null,
+                    end_date: rawData.end_date || null,
+                    createdAt: rawData.createdAt || null,
+                    updatedAt: rawData.updatedAt || null,
+                  });
+                } else {
+                  console.warn('RawData item without featureRawDatasId:', rawData.id);
+                }
               });
-            } else {
-              console.warn('RawData item without featureRawDatasId:', rawData.id);
+
+              // Get features from template if tree has a template
+              const templateFeatureIds = tree.templateTreesId 
+                ? featuresByTemplate.get(tree.templateTreesId) || new Set<string>()
+                : new Set<string>();
+
+              // Create FeatureInfo objects - include all features from template, merge RawData if available
+              const featuresMapForTree = new Map<string, FeatureInfo>();
+              
+              // First, add all features from the template (even without RawData)
+              templateFeatureIds.forEach((featureId) => {
+                if (featuresMap.has(featureId)) {
+                  const featureBase = featuresMap.get(featureId)!;
+                  featuresMapForTree.set(featureId, {
+                    ...featureBase,
+                    rawData: rawDataByFeature.get(featureId) || [],
+                  });
+                }
+              });
+
+              // Also include features that have RawData but might not be in template
+              rawDataByFeature.forEach((rawDataArray, featureId) => {
+                if (featuresMap.has(featureId) && !featuresMapForTree.has(featureId)) {
+                  const featureBase = featuresMap.get(featureId)!;
+                  featuresMapForTree.set(featureId, {
+                    ...featureBase,
+                    rawData: rawDataArray,
+                  });
+                }
+                // If feature already exists (from template), RawData was already set above
+              });
+
+              const features = Array.from(featuresMapForTree.values());
+
+              treesWithFeatures.push({
+                id: tree.id,
+                name: tree.name,
+                status: tree.status || null,
+                are_audios_processed: tree.are_audios_processed || null,
+                projectTreesId: tree.projectTreesId || null,
+                templateTreesId: tree.templateTreesId || null,
+                createdAt: tree.createdAt || null,
+                updatedAt: tree.updatedAt || null,
+                features: features,
+              });
+              
+              processedCount++;
+            } catch (treeErr: any) {
+              errorCount++;
+              console.error(`Error processing tree ${tree.id} (${tree.name}):`, treeErr);
+              // Continue processing other trees even if one fails
             }
-            });
+          }
 
-            // Get features from template if tree has a template
-            const templateFeatureIds = tree.templateTreesId 
-              ? featuresByTemplate.get(tree.templateTreesId) || new Set<string>()
-              : new Set<string>();
+          console.log(`Project ${project.name}: Successfully processed ${processedCount} trees, ${errorCount} errors`);
 
-            // Create FeatureInfo objects - include all features from template, merge RawData if available
-            const featuresMapForTree = new Map<string, FeatureInfo>();
-            
-            // First, add all features from the template (even without RawData)
-            templateFeatureIds.forEach((featureId) => {
-              if (featuresMap.has(featureId)) {
-                const featureBase = featuresMap.get(featureId)!;
-                featuresMapForTree.set(featureId, {
-                  ...featureBase,
-                  rawData: rawDataByFeature.get(featureId) || [],
-                });
-              }
-            });
-
-            // Also include features that have RawData but might not be in template
-            rawDataByFeature.forEach((rawDataArray, featureId) => {
-              if (featuresMap.has(featureId) && !featuresMapForTree.has(featureId)) {
-                const featureBase = featuresMap.get(featureId)!;
-                featuresMapForTree.set(featureId, {
-                  ...featureBase,
-                  rawData: rawDataArray,
-                });
-              }
-              // If feature already exists (from template), RawData was already set above
-            });
-
-            const features = Array.from(featuresMapForTree.values());
-
-            return {
-            id: tree.id,
-            name: tree.name,
-            status: tree.status || null,
-            are_audios_processed: tree.are_audios_processed || null,
-            projectTreesId: tree.projectTreesId || null,
-            templateTreesId: tree.templateTreesId || null,
-            createdAt: tree.createdAt || null,
-            updatedAt: tree.updatedAt || null,
-            features: features,
-          };
-        });
+          // Apply treeLimit if provided (only affects display, not totalTreeCount)
+          const finalTrees = treeLimit && treeLimit > 0
+            ? treesWithFeatures.slice(0, treeLimit)
+            : treesWithFeatures;
+          
+          if (treeLimit && treeLimit > 0 && treesWithFeatures.length > treeLimit) {
+            console.log(`Project ${project.name}: Limited trees from ${treesWithFeatures.length} to ${finalTrees.length} (treeLimit: ${treeLimit})`);
+          }
 
           return {
             id: project.id,
@@ -275,7 +332,7 @@ export function useProjectTreeFeature(treeLimit?: number, unprocessedOnly?: bool
             status: project.status,
             createdAt: project.createdAt || null,
             updatedAt: project.updatedAt || null,
-            trees: treesWithFeatures,
+            trees: finalTrees,
             totalTreeCount: totalTreeCount,
             processedAudioCount: processedAudioCount,
             unprocessedAudioCount: unprocessedAudioCount,
