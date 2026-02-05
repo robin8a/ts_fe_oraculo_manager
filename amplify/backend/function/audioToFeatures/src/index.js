@@ -79,6 +79,28 @@ const GET_TEMPLATE_QUERY = `
   }
 `;
 
+const GET_TREE_WITH_RAWDATA_QUERY = `
+  query GetTreeWithRawData($id: ID!) {
+    getTree(id: $id) {
+      id
+      name
+      status
+      templateTreesId
+      rawData {
+        items {
+          id
+          name
+          valueString
+          valueFloat
+          treeRawDataId
+          featureRawDatasId
+        }
+        nextToken
+      }
+    }
+  }
+`;
+
 const LIST_TEMPLATE_FEATURES_QUERY = `
   query ListTemplateFeatures($filter: ModelTemplateFeatureFilterInput, $limit: Int, $nextToken: String) {
     listTemplateFeatures(filter: $filter, limit: $limit, nextToken: $nextToken) {
@@ -852,6 +874,7 @@ exports.handler = async (event) => {
 
     console.log('Processing audio to features:', { 
       treeIds: treeIds ? treeIds.length : 'all', 
+      treeIdsArray: treeIds,
       templateId,
       hasGeminiKey: !!geminiApiKey 
     });
@@ -888,27 +911,82 @@ exports.handler = async (event) => {
       };
     }
 
-    // Step 2: Get Trees with nested RawData (using same approach as frontend component)
+    // Step 2: Get Trees with nested RawData
     console.log('Fetching trees with rawData...');
-    const treeFilter = treeIds && treeIds.length > 0
-      ? { or: treeIds.map(id => ({ id: { eq: id } })) }
-      : undefined;
     
-    const treesData = await graphqlRequest(LIST_TREES_WITH_RAWDATA_QUERY, {
-      filter: treeFilter,
-      limit: 1000, // Adjust as needed
-    });
+    let trees = [];
+    
+    // For single treeId, use getTree directly (more reliable than listTrees filter)
+    if (treeIds && treeIds.length === 1) {
+      console.log('Using getTree for single treeId:', treeIds[0]);
+      try {
+        const treeData = await graphqlRequest(GET_TREE_WITH_RAWDATA_QUERY, { id: treeIds[0] });
+        console.log('getTree response:', JSON.stringify(treeData, null, 2));
+        
+        if (treeData.getTree) {
+          // Convert getTree result to same format as listTrees
+          trees = [treeData.getTree];
+          console.log(`Found tree using getTree: ${treeData.getTree.name} (${treeData.getTree.id})`);
+        } else {
+          console.log('getTree returned null - tree does not exist');
+        }
+      } catch (getTreeError) {
+        console.error('Error fetching tree with getTree:', getTreeError);
+        throw new Error(`Failed to fetch tree ${treeIds[0]}: ${getTreeError.message}`);
+      }
+    } else {
+      // For multiple treeIds or all trees, use listTrees
+      let treeFilter = undefined;
+      if (treeIds && treeIds.length > 1) {
+        // For multiple treeIds, use or filter
+        treeFilter = { or: treeIds.map(id => ({ id: { eq: id } })) };
+      }
+      
+      console.log('Tree filter:', JSON.stringify(treeFilter, null, 2));
+      console.log('Tree IDs being searched:', treeIds);
+      
+      let treesData;
+      try {
+        treesData = await graphqlRequest(LIST_TREES_WITH_RAWDATA_QUERY, {
+          filter: treeFilter,
+          limit: 1000, // Adjust as needed
+        });
+        console.log('GraphQL response received:', JSON.stringify(treesData, null, 2));
+      } catch (graphqlError) {
+        console.error('GraphQL request failed:', graphqlError);
+        console.error('GraphQL error details:', {
+          message: graphqlError.message,
+          stack: graphqlError.stack,
+          filter: treeFilter,
+          treeIds: treeIds,
+        });
+        throw new Error(`Failed to fetch trees: ${graphqlError.message}`);
+      }
 
-    const trees = treesData.listTrees.items || [];
-    console.log(`Found ${trees.length} trees to process`);
+      trees = treesData.listTrees?.items || [];
+      console.log(`Found ${trees.length} trees to process`);
+      
+      if (trees.length === 0 && treeIds && treeIds.length > 0) {
+        console.log('WARNING: No trees found for provided treeIds:', treeIds);
+        console.log('GraphQL response structure:', JSON.stringify(treesData, null, 2));
+      }
+    }
+    
+    console.log(`Total trees to process: ${trees.length}`);
 
     if (trees.length === 0) {
+      const errorMessage = treeIds && treeIds.length > 0
+        ? `No trees found to process for provided treeIds: ${treeIds.join(', ')}. The trees may not exist, may have been deleted, or may have been processed already.`
+        : 'No trees found to process';
+      
+      console.log('ERROR: ' + errorMessage);
+      
       return {
         statusCode: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           success: true,
-          message: 'No trees found to process',
+          message: errorMessage,
           results: [],
         }),
       };

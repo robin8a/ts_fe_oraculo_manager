@@ -16,17 +16,14 @@
         "tsbeoraculoapi7e5484f0": {}
       },
       "function": {
+        "audioToFeatures": {
+          "deploymentBucketName": "amplify-tsbeoraculoapi-dev-755cb-deployment",
+          "s3Key": "amplify-builds/audioToFeatures-67394e734b476f4e5844-build.zip"
+        },
         "kobotoolboxProxy": {
           "deploymentBucketName": "amplify-tsbeoraculoapi-dev-755cb-deployment",
           "s3Key": "amplify-builds/kobotoolboxProxy-56424549424a56683274-build.zip"
-        },
-        "audioToFeatures": {
-          "deploymentBucketName": "amplify-tsbeoraculoapi-dev-755cb-deployment",
-          "s3Key": "amplify-builds/audioToFeatures-4975415137414961374c-build.zip"
         }
-      },
-      "api": {
-        "tsbeoraculoapi": {}
       },
       "storage": {
         "s3744e127b": {}
