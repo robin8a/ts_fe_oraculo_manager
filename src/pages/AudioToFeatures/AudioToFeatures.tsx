@@ -18,7 +18,8 @@ export const AudioToFeatures: React.FC = () => {
   
   const [treeLimit, setTreeLimit] = useState<number>(100);
   const [loadingMoreTrees, setLoadingMoreTrees] = useState(false);
-  const { projects, loading: projectsLoading, refetch: refetchProjects } = useProjectTreeFeature(treeLimit, true); // true = unprocessed only
+  const [showUnprocessedOnly, setShowUnprocessedOnly] = useState<boolean>(true);
+  const { projects, loading: projectsLoading, refetch: refetchProjects } = useProjectTreeFeature(treeLimit, showUnprocessedOnly);
 
   const [formData, setFormData] = useState({
     templateId: '',
@@ -69,11 +70,13 @@ export const AudioToFeatures: React.FC = () => {
       
       projects.forEach(project => {
         project.trees.forEach(tree => {
-          // Only show trees that haven't been processed yet (are_audios_processed is false or null)
-          const isProcessed = tree.are_audios_processed === true;
-          if (isProcessed) {
-            console.log(`AudioToFeatures: Skipping tree ${tree.id} (${tree.name}) - already processed`);
-            return; // Skip this tree
+          // Filter by unprocessed status if showUnprocessedOnly is true
+          if (showUnprocessedOnly) {
+            const isProcessed = tree.are_audios_processed === true;
+            if (isProcessed) {
+              console.log(`AudioToFeatures: Skipping tree ${tree.id} (${tree.name}) - already processed`);
+              return; // Skip this tree
+            }
           }
           
           let audioCount = 0;
@@ -135,13 +138,14 @@ export const AudioToFeatures: React.FC = () => {
         });
       });
       
-      console.log(`AudioToFeatures: Found ${trees.length} unprocessed trees with audio files`);
+      const filterText = showUnprocessedOnly ? 'unprocessed ' : '';
+      console.log(`AudioToFeatures: Found ${trees.length} ${filterText}trees with audio files`);
       setTreesWithAudio(trees);
     } else if (!projectsLoading && projects.length === 0) {
       // Reset if no projects
       setTreesWithAudio([]);
     }
-  }, [projects, projectsLoading]);
+  }, [projects, projectsLoading, showUnprocessedOnly]);
 
   const toggleTreeExpansion = (treeId: string) => {
     setExpandedTrees(prev => {
@@ -701,6 +705,20 @@ export const AudioToFeatures: React.FC = () => {
               )}
               
               <div className="space-y-3">
+                {/* Filter for Unprocessed Trees */}
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={showUnprocessedOnly}
+                    onChange={(e) => setShowUnprocessedOnly(e.target.checked)}
+                    className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    disabled={loading || batchProcessing || projectsLoading}
+                  />
+                  <span className="ml-2 text-sm text-gray-700">
+                    Show only unprocessed trees
+                  </span>
+                </label>
+
                 <label className="flex items-center">
                   <input
                     type="checkbox"
@@ -897,7 +915,7 @@ export const AudioToFeatures: React.FC = () => {
                 )}
                 {treesWithAudio.length > 0 && (
                   <p className="text-xs text-gray-500 text-center mt-2">
-                    Showing {treesWithAudio.length} unprocessed tree{treesWithAudio.length !== 1 ? 's' : ''} with audio files
+                    Showing {treesWithAudio.length} {showUnprocessedOnly ? 'unprocessed ' : ''}tree{treesWithAudio.length !== 1 ? 's' : ''} with audio files
                     {treeLimit > 100 && ` (loaded ${treeLimit} per project)`}
                   </p>
                 )}
