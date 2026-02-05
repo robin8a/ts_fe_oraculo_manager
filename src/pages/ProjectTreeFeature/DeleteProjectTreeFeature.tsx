@@ -103,7 +103,7 @@ interface DeleteItem {
 export const DeleteProjectTreeFeature: React.FC = () => {
   const [allProjects, setAllProjects] = useState<ProjectWithTrees[]>([]);
   const [allTrees, setAllTrees] = useState<TreeWithFeatures[]>([]);
-  const [allFeatures, setAllFeatures] = useState<FeatureInfo[]>([]);
+  const [allFeatures, _setAllFeatures] = useState<FeatureInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<DeleteItem | null>(null);
@@ -124,7 +124,7 @@ export const DeleteProjectTreeFeature: React.FC = () => {
   const [bulkDeleteProgress, setBulkDeleteProgress] = useState({ current: 0, total: 0 });
   const [totalTreesCount, setTotalTreesCount] = useState(0);
   const [loadingTrees, setLoadingTrees] = useState(false);
-  const [featuresMap, setFeaturesMap] = useState<Map<string, FeatureInfo>>(new Map());
+  const [_featuresMap, setFeaturesMap] = useState<Map<string, FeatureInfo>>(new Map());
   
   // Dashboard stats
   const [dashboardStats, setDashboardStats] = useState({
@@ -199,7 +199,8 @@ export const DeleteProjectTreeFeature: React.FC = () => {
           feature_group: feature.feature_group || null,
           description: feature.description || null,
           default_value: feature.default_value || null,
-          is_float: feature.is_float || null,
+          is_float: feature.is_float ?? null,
+          rawData: feature.rawData ?? [],
         });
       });
       setFeaturesMap(map);
@@ -212,22 +213,11 @@ export const DeleteProjectTreeFeature: React.FC = () => {
         createdAt: project.createdAt || null,
         updatedAt: project.updatedAt || null,
         trees: [],
+        totalTreeCount: 0,
+        processedAudioCount: 0,
+        unprocessedAudioCount: 0,
       }));
       setAllProjects(projectsData);
-
-      // Get total count of trees across all projects
-      let totalCount = 0;
-      for (const project of projects) {
-        const treesResponse: any = await API.graphql({
-          query: listTrees,
-          variables: {
-            filter: { projectTreesId: { eq: project.id } },
-            limit: 1, // Just to get count
-          },
-        });
-        // Get total by checking if there's a nextToken or counting items
-        // For now, we'll fetch trees page by page
-      }
     } catch (err: any) {
       const errorMessage =
         err?.errors?.[0]?.message || err?.message || 'Failed to fetch data';
@@ -298,6 +288,7 @@ export const DeleteProjectTreeFeature: React.FC = () => {
               id: tree.id,
               name: tree.name,
               status: tree.status || null,
+              are_audios_processed: tree.are_audios_processed ?? null,
               projectTreesId: tree.projectTreesId || null,
               templateTreesId: tree.templateTreesId || null,
               createdAt: tree.createdAt || null,
@@ -464,7 +455,7 @@ export const DeleteProjectTreeFeature: React.FC = () => {
         );
 
         // Delete all RawData for all trees
-        for (const tree of trees) {
+        for (const tree of trees as { id: string }[]) {
           const rawDataItems = await fetchAllWithPagination(
             listRawData,
             {
@@ -477,7 +468,7 @@ export const DeleteProjectTreeFeature: React.FC = () => {
               return response.data.listRawData.items || [];
             }
           );
-          for (const rawData of rawDataItems) {
+          for (const rawData of rawDataItems as { id: string }[]) {
             await API.graphql({
               query: deleteRawData,
               variables: {
@@ -517,7 +508,7 @@ export const DeleteProjectTreeFeature: React.FC = () => {
             return response.data.listRawData.items || [];
           }
         );
-        for (const rawData of rawDataItems as any[]) {
+        for (const rawData of rawDataItems as { id: string }[]) {
           await API.graphql({
             query: deleteRawData,
             variables: {
@@ -548,7 +539,7 @@ export const DeleteProjectTreeFeature: React.FC = () => {
             return response.data.listRawData.items || [];
           }
         );
-        for (const rawData of rawDataItems) {
+        for (const rawData of rawDataItems as { id: string }[]) {
           await API.graphql({
             query: deleteRawData,
             variables: {
@@ -952,7 +943,7 @@ export const DeleteProjectTreeFeature: React.FC = () => {
               <p className="text-gray-500 text-sm">No features found</p>
             ) : (
               <div className="space-y-2">
-                {allFeatures.map((feature) => (
+                {allFeatures.map((feature: FeatureInfo) => (
                   <div
                     key={feature.id}
                     className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"

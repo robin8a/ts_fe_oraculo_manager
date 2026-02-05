@@ -17,7 +17,7 @@ export function useAuth() {
     checkAuth();
     
     // Listen for auth state changes
-    const unsubscribe = Auth.currentAuthenticatedUser()
+    void Auth.currentAuthenticatedUser()
       .then(() => checkAuth())
       .catch(() => {
         setUser(null);

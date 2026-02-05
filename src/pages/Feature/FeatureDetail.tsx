@@ -12,7 +12,7 @@ import { Modal } from '../../components/ui/Modal';
 export const FeatureDetail: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const { feature, loading, error, refetch } = useGetFeature(id || '');
+  const { feature, loading, error } = useGetFeature(id || '');
   const { deleteFeature, loading: deleting } = useDeleteFeature();
   const [deleteModal, setDeleteModal] = useState(false);
 

@@ -13,7 +13,7 @@ import { Modal } from '../../components/ui/Modal';
 export const ModelAIDetail: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const { modelAI, loading, error, refetch } = useGetModelAI(id || '');
+  const { modelAI, loading, error } = useGetModelAI(id || '');
   const { deleteModelAI, loading: deleting } = useDeleteModelAI();
   const [deleteModal, setDeleteModal] = useState(false);
 

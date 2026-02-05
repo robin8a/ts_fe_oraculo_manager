@@ -40,7 +40,7 @@ export const AudioToFeatures: React.FC = () => {
   }>>([]);
   const [expandedTrees, setExpandedTrees] = useState<Set<string>>(new Set());
   const [batchProcessing, setBatchProcessing] = useState(false);
-  const [treeStats, setTreeStats] = useState<{
+  const [treeStats, _setTreeStats] = useState<{
     total: number;
     processed: number;
     unprocessed: number;
@@ -271,7 +271,7 @@ export const AudioToFeatures: React.FC = () => {
           
           // Update progress for this tree
           const progressUpdate = {
-            status: (treeResult.errors && treeResult.errors.length > 0) ? 'error' : 'completed',
+            status: ((treeResult.errors && treeResult.errors.length > 0) ? 'error' : 'completed') as 'queued' | 'processing' | 'completed' | 'error',
             processed: treeResult.processed,
             total: treeResult.audioCount,
             featuresExtracted: treeResult.featuresExtracted,

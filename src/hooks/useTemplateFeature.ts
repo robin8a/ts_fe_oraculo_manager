@@ -8,7 +8,6 @@ import type {
 } from '../types/templateFeature';
 import { Feature } from '../types/feature';
 import { 
-  listTemplateFeatures, 
   getTemplateFeature,
   listTemplates 
 } from '../graphql/queries';
