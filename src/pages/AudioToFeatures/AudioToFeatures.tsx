@@ -295,8 +295,9 @@ export const AudioToFeatures: React.FC = () => {
           totalErrors += (treeResult.errors?.length || 0);
           totalFeaturesExtracted += treeResult.featuresExtracted;
 
-          // Update are_audios_processed flag for successfully processed tree
-          if (treeResult.processed > 0 || treeResult.featuresExtracted > 0) {
+          // Update are_audios_processed flag - mark as processed if tree has audio files, 
+          // even if no features were extracted
+          if (treeResult.audioCount > 0) {
             try {
               await API.graphql({
                 query: updateTree,
@@ -307,7 +308,7 @@ export const AudioToFeatures: React.FC = () => {
                   },
                 },
               });
-              console.log(`AudioToFeatures: Updated are_audios_processed for tree ${treeId}`);
+              console.log(`AudioToFeatures: Updated are_audios_processed for tree ${treeId} (audioCount: ${treeResult.audioCount}, featuresExtracted: ${treeResult.featuresExtracted})`);
             } catch (err: any) {
               console.error(`AudioToFeatures: Failed to update tree ${treeId}:`, err);
             }
