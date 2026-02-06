@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ArrowLeftIcon, MicrophoneIcon, ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { useNavigate } from 'react-router-dom';
 import { API } from 'aws-amplify';
@@ -19,7 +19,24 @@ export const AudioToFeatures: React.FC = () => {
   const [treeLimit, setTreeLimit] = useState<number>(100);
   const [loadingMoreTrees, setLoadingMoreTrees] = useState(false);
   const [showUnprocessedOnly, setShowUnprocessedOnly] = useState<boolean>(true);
+  const [filterFeatureId, setFilterFeatureId] = useState<string>('');
+  const [filterFeatureValue, setFilterFeatureValue] = useState<string>('');
   const { projects, loading: projectsLoading, refetch: refetchProjects } = useProjectTreeFeature(treeLimit, showUnprocessedOnly);
+
+  // Unique features from all loaded trees (for filter dropdown)
+  const availableFeatures = useMemo(() => {
+    const byId = new Map<string, { id: string; name: string }>();
+    projects.forEach(project => {
+      project.trees.forEach(tree => {
+        (tree.features || []).forEach((f: { id: string; name: string | null }) => {
+          if (f.id && !byId.has(f.id)) {
+            byId.set(f.id, { id: f.id, name: f.name || 'Unnamed' });
+          }
+        });
+      });
+    });
+    return Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [projects]);
 
   const [formData, setFormData] = useState({
     templateId: '',
@@ -126,6 +143,24 @@ export const AudioToFeatures: React.FC = () => {
           
           console.log(`AudioToFeatures: Tree ${tree.id} summary - audioCount: ${audioCount}, existingFeatures: ${existingFeaturesMap.size}`);
           
+          // Filter by feature value if set: only include trees that have the selected feature with the given value
+          if (filterFeatureId && filterFeatureValue.trim() !== '') {
+            const feature = features.find((f: { id: string }) => f.id === filterFeatureId);
+            if (!feature) return;
+            const rawDataArray = (feature as { rawData?: RawDataInfo[] }).rawData || [];
+            const valueTrimmed = filterFeatureValue.trim();
+            const numValue = parseFloat(valueTrimmed);
+            const hasMatch = rawDataArray.some((rd: RawDataInfo) => {
+              if (rd.valueString != null && rd.valueString.trim() !== '') {
+                if (rd.valueString.trim() === valueTrimmed) return true;
+                if (!Number.isNaN(numValue) && parseFloat(rd.valueString) === numValue) return true;
+              }
+              if (rd.valueFloat != null && !Number.isNaN(numValue) && rd.valueFloat === numValue) return true;
+              return false;
+            });
+            if (!hasMatch) return;
+          }
+
           // Include trees that have audio files OR existing features
           if (audioCount > 0 || existingFeaturesMap.size > 0) {
             trees.push({
@@ -139,13 +174,14 @@ export const AudioToFeatures: React.FC = () => {
       });
       
       const filterText = showUnprocessedOnly ? 'unprocessed ' : '';
-      console.log(`AudioToFeatures: Found ${trees.length} ${filterText}trees with audio files`);
+      const featureFilterText = filterFeatureId && filterFeatureValue.trim() ? ` (filtered by feature)` : '';
+      console.log(`AudioToFeatures: Found ${trees.length} ${filterText}trees with audio files${featureFilterText}`);
       setTreesWithAudio(trees);
     } else if (!projectsLoading && projects.length === 0) {
       // Reset if no projects
       setTreesWithAudio([]);
     }
-  }, [projects, projectsLoading, showUnprocessedOnly]);
+  }, [projects, projectsLoading, showUnprocessedOnly, filterFeatureId, filterFeatureValue]);
 
   const toggleTreeExpansion = (treeId: string) => {
     setExpandedTrees(prev => {
@@ -720,6 +756,56 @@ export const AudioToFeatures: React.FC = () => {
                   </span>
                 </label>
 
+                {/* Filter trees by feature value */}
+                <div className="flex flex-wrap items-end gap-3 pt-1">
+                  <div className="flex-1 min-w-[140px]">
+                    <label htmlFor="filterFeatureId" className="block text-xs font-medium text-gray-500 mb-1">
+                      Filter by feature
+                    </label>
+                    <select
+                      id="filterFeatureId"
+                      value={filterFeatureId}
+                      onChange={(e) => setFilterFeatureId(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      disabled={loading || batchProcessing || projectsLoading}
+                    >
+                      <option value="">All trees</option>
+                      {availableFeatures.map((f) => (
+                        <option key={f.id} value={f.id}>{f.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex-1 min-w-[140px]">
+                    <label htmlFor="filterFeatureValue" className="block text-xs font-medium text-gray-500 mb-1">
+                      Feature value
+                    </label>
+                    <input
+                      id="filterFeatureValue"
+                      type="text"
+                      value={filterFeatureValue}
+                      onChange={(e) => setFilterFeatureValue(e.target.value)}
+                      placeholder={filterFeatureId ? 'e.g. Oak, 42' : 'Select a feature first'}
+                      disabled={!filterFeatureId || loading || batchProcessing || projectsLoading}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:bg-gray-100 disabled:text-gray-500"
+                    />
+                  </div>
+                  {(filterFeatureId || filterFeatureValue) && (
+                    <button
+                      type="button"
+                      onClick={() => { setFilterFeatureId(''); setFilterFeatureValue(''); }}
+                      className="text-sm text-primary-600 hover:text-primary-800 whitespace-nowrap"
+                      disabled={loading || batchProcessing || projectsLoading}
+                    >
+                      Clear filter
+                    </button>
+                  )}
+                </div>
+                {filterFeatureId && filterFeatureValue.trim() && (
+                  <p className="text-xs text-gray-500">
+                    Only trees with feature &quot;{availableFeatures.find(f => f.id === filterFeatureId)?.name}&quot; = &quot;{filterFeatureValue.trim()}&quot; will be loaded and processed.
+                  </p>
+                )}
+
                 <label className="flex items-center">
                   <input
                     type="checkbox"
@@ -917,6 +1003,7 @@ export const AudioToFeatures: React.FC = () => {
                 {treesWithAudio.length > 0 && (
                   <p className="text-xs text-gray-500 text-center mt-2">
                     Showing {treesWithAudio.length} {showUnprocessedOnly ? 'unprocessed ' : ''}tree{treesWithAudio.length !== 1 ? 's' : ''} with audio files
+                    {filterFeatureId && filterFeatureValue.trim() && ' (filtered by feature)'}
                     {treeLimit > 100 && ` (loaded ${treeLimit} per project)`}
                   </p>
                 )}
