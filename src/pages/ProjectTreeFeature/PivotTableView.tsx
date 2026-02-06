@@ -1,13 +1,14 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { API } from 'aws-amplify';
 import { listProjects } from '../../graphql/queries';
 import { useProjectTrees } from '../../hooks/useProjectTrees';
 import type { FeatureInfo } from '../../types/projectTreeFeature';
+import { isAudioS3Url, downloadAudioFileFromS3 } from '../../services/storageService';
 import { Table } from '../../components/ui/Table';
 import { Select } from '../../components/ui/Select';
 import { Button } from '../../components/ui/Button';
 import { Pagination } from '../../components/ui/Pagination';
-import { ExclamationTriangleIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import { ExclamationTriangleIcon, ArrowDownTrayIcon, PlayIcon, StopIcon } from '@heroicons/react/24/outline';
 
 interface ProjectOption {
   id: string;
@@ -43,6 +44,12 @@ function downloadCsv(rows: Record<string, string | number | null>[], columns: { 
   URL.revokeObjectURL(url);
 }
 
+type AudioState = {
+  playingCellKey: string | null;
+  objectUrl: string | null;
+  loadingCellKey: string | null;
+};
+
 export const PivotTableView: React.FC = () => {
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(true);
@@ -50,9 +57,44 @@ export const PivotTableView: React.FC = () => {
   const [selectedPivotFeatureId, setSelectedPivotFeatureId] = useState<string>('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [audioState, setAudioState] = useState<AudioState>({
+    playingCellKey: null,
+    objectUrl: null,
+    loadingCellKey: null,
+  });
+  const audioRef = useRef<HTMLAudioElement>(null);
 
   const { trees, loading: treesLoading, error: treesError, refetch } =
     useProjectTrees(selectedProjectId || null);
+
+  const handlePlayAudio = useCallback(async (cellKey: string, url: string) => {
+    setAudioState((prev) => {
+      if (prev.objectUrl) URL.revokeObjectURL(prev.objectUrl);
+      return { ...prev, objectUrl: null, loadingCellKey: cellKey };
+    });
+    try {
+      const blob = await downloadAudioFileFromS3(url);
+      const objectUrl = URL.createObjectURL(blob);
+      if (!audioRef.current) return;
+      audioRef.current.src = objectUrl;
+      audioRef.current.play();
+      setAudioState({ playingCellKey: cellKey, objectUrl, loadingCellKey: null });
+    } catch (err) {
+      console.error('Failed to load audio:', err);
+      setAudioState((prev) => ({ ...prev, loadingCellKey: null }));
+    }
+  }, []);
+
+  const handleStopAudio = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+    setAudioState((prev) => {
+      if (prev.objectUrl) URL.revokeObjectURL(prev.objectUrl);
+      return { playingCellKey: null, objectUrl: null, loadingCellKey: null };
+    });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -146,18 +188,51 @@ export const PivotTableView: React.FC = () => {
         render: (row) => {
           const v = row[feature.id];
           if (v == null) return '—';
-          return String(v);
+          const strVal = String(v);
+          if (typeof v === 'string' && isAudioS3Url(v)) {
+            const cellKey = `${row.id}-${feature.id}`;
+            const isPlaying = audioState.playingCellKey === cellKey;
+            const isLoading = audioState.loadingCellKey === cellKey;
+            return (
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => handlePlayAudio(cellKey, v)}
+                  disabled={isLoading}
+                  className="rounded p-1.5 text-primary-600 hover:bg-primary-50 disabled:opacity-50"
+                  title="Play"
+                >
+                  {isLoading ? (
+                    <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-primary-600 border-t-transparent" />
+                  ) : (
+                    <PlayIcon className="h-4 w-4" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleStopAudio}
+                  disabled={!isPlaying}
+                  className="rounded p-1.5 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Stop"
+                >
+                  <StopIcon className="h-4 w-4" />
+                </button>
+              </div>
+            );
+          }
+          return strVal;
         },
       });
     });
     return cols;
-  }, [pivotFeatureFirst]);
+  }, [pivotFeatureFirst, audioState.playingCellKey, audioState.loadingCellKey, handlePlayAudio, handleStopAudio]);
 
   const hasTrees = trees.length > 0;
   const hasFeatures = allFeaturesOrdered.length > 0;
 
   return (
     <div className="space-y-6">
+      <audio ref={audioRef} className="hidden" />
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Pivot Table</h1>
         <p className="mt-2 text-sm text-gray-600">
