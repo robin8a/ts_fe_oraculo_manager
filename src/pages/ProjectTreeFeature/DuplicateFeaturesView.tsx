@@ -52,6 +52,15 @@ export const DuplicateFeaturesView: React.FC = () => {
   const [selectedTreeIds, setSelectedTreeIds] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteProgress, setDeleteProgress] = useState<{
+    treeIndex: number;
+    treeTotal: number;
+    projectName: string;
+    treeName: string;
+    featureName: string;
+    entriesDeleted: number;
+    totalToDelete: number;
+  } | null>(null);
 
   const treesWithDuplicates = useMemo(
     () => computeTreesWithDuplicates(projects),
@@ -78,28 +87,63 @@ export const DuplicateFeaturesView: React.FC = () => {
   const handleDeleteDuplicates = async () => {
     const selected = treesWithDuplicates.filter((t) => selectedTreeIds.has(t.tree.id));
     if (selected.length === 0) return;
+    const totalToDelete = selected.reduce(
+      (sum, { duplicatedFeatures }) =>
+        sum + duplicatedFeatures.reduce((s, d) => s + d.toRemove, 0),
+      0
+    );
     setIsDeleting(true);
     setDeleteError(null);
+    setDeleteProgress({
+      treeIndex: 0,
+      treeTotal: selected.length,
+      projectName: selected[0]?.projectName ?? '',
+      treeName: selected[0]?.tree.name ?? '',
+      featureName: selected[0]?.duplicatedFeatures[0]?.feature.name ?? '',
+      entriesDeleted: 0,
+      totalToDelete,
+    });
+    let entriesDeleted = 0;
     try {
-      for (const { tree, duplicatedFeatures } of selected) {
+      for (let treeIdx = 0; treeIdx < selected.length; treeIdx++) {
+        const { projectName, tree, duplicatedFeatures } = selected[treeIdx];
         for (const { feature } of duplicatedFeatures) {
           const rawDataList = feature.rawData ?? [];
           if (rawDataList.length <= 1) continue;
-          // Keep oldest by createdAt; delete the rest
           const sorted = [...rawDataList].sort((a, b) => {
             const aT = a.createdAt ?? '';
             const bT = b.createdAt ?? '';
             return aT.localeCompare(bT);
           });
           const toDelete = sorted.slice(1);
+          setDeleteProgress({
+            treeIndex: treeIdx + 1,
+            treeTotal: selected.length,
+            projectName,
+            treeName: tree.name,
+            featureName: feature.name,
+            entriesDeleted,
+            totalToDelete,
+          });
           for (const raw of toDelete) {
             await API.graphql({
               query: deleteRawData,
               variables: { input: { id: raw.id } },
             });
+            entriesDeleted += 1;
+            setDeleteProgress({
+              treeIndex: treeIdx + 1,
+              treeTotal: selected.length,
+              projectName,
+              treeName: tree.name,
+              featureName: feature.name,
+              entriesDeleted,
+              totalToDelete,
+            });
           }
         }
       }
+      setDeleteProgress((prev) => prev && { ...prev, entriesDeleted: totalToDelete });
       setSelectedTreeIds(new Set());
       await refetch();
     } catch (err: unknown) {
@@ -107,6 +151,7 @@ export const DuplicateFeaturesView: React.FC = () => {
       setDeleteError(message);
     } finally {
       setIsDeleting(false);
+      setDeleteProgress(null);
     }
   };
 
@@ -206,6 +251,29 @@ export const DuplicateFeaturesView: React.FC = () => {
               })}
             </ul>
           </div>
+
+          {isDeleting && deleteProgress && (
+            <div className="rounded-lg border border-primary-200 bg-primary-50 p-4 space-y-3">
+              <p className="text-sm font-medium text-primary-900">Deleting duplicate features…</p>
+              <p className="text-sm text-primary-800">
+                Tree {deleteProgress.treeIndex} of {deleteProgress.treeTotal}: {deleteProgress.projectName} / {deleteProgress.treeName}
+              </p>
+              <p className="text-sm text-primary-700">
+                Feature: {deleteProgress.featureName}
+              </p>
+              <p className="text-sm text-primary-700">
+                {deleteProgress.entriesDeleted} of {deleteProgress.totalToDelete} entries deleted
+              </p>
+              <div className="w-full h-2 bg-primary-200 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary-600 transition-all duration-200"
+                  style={{
+                    width: `${deleteProgress.totalToDelete > 0 ? (100 * deleteProgress.entriesDeleted) / deleteProgress.totalToDelete : 0}%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
 
           {selectedTreeIds.size > 0 && (
             <div className="flex flex-col gap-3">
