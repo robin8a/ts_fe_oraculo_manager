@@ -15,6 +15,7 @@ import {
   ScaleIcon,
   LinkIcon,
   DocumentIcon,
+  DocumentDuplicateIcon,
   MicrophoneIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../hooks/useAuth';
@@ -81,6 +82,11 @@ const navigation: NavItem[] = [
     name: 'Delete Projects/Trees/Features',
     href: '/projects/delete',
     icon: TrashIcon,
+  },
+  {
+    name: 'Duplicate features',
+    href: '/projects/duplicates',
+    icon: DocumentDuplicateIcon,
   },
   {
     name: 'KoboToolbox Import',

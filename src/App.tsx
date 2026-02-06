@@ -18,6 +18,7 @@ import { AudioToFeatures } from './pages/AudioToFeatures/AudioToFeatures';
 import { Login } from './pages/Login/Login';
 import { ProjectTreeFeatureView } from './pages/ProjectTreeFeature/ProjectTreeFeatureView';
 import { DeleteProjectTreeFeature } from './pages/ProjectTreeFeature/DeleteProjectTreeFeature';
+import { DuplicateFeaturesView } from './pages/ProjectTreeFeature/DuplicateFeaturesView';
 import { TemplateFeatureList } from './pages/TemplateFeature/TemplateFeatureList';
 import { TemplateFeatureCreate } from './pages/TemplateFeature/TemplateFeatureCreate';
 import { TemplateFeatureDetail } from './pages/TemplateFeature/TemplateFeatureDetail';
@@ -101,6 +102,7 @@ function App() {
                   <Route path="/audio-to-features" element={<AudioToFeatures />} />
                   <Route path="/projects" element={<ProjectTreeFeatureView />} />
                   <Route path="/projects/delete" element={<DeleteProjectTreeFeature />} />
+                  <Route path="/projects/duplicates" element={<DuplicateFeaturesView />} />
                   <Route path="/templatefeatures" element={<TemplateFeatureList />} />
                   <Route path="/templatefeatures/create" element={<TemplateFeatureCreate />} />
                   <Route path="/templatefeatures/:id" element={<TemplateFeatureDetail />} />
