@@ -6,6 +6,7 @@ import type { FeatureInfo } from '../../types/projectTreeFeature';
 import { isAudioS3Url, downloadAudioFileFromS3 } from '../../services/storageService';
 import { Table } from '../../components/ui/Table';
 import { Select } from '../../components/ui/Select';
+import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { Pagination } from '../../components/ui/Pagination';
 import { ExclamationTriangleIcon, ArrowDownTrayIcon, PlayIcon, StopIcon } from '@heroicons/react/24/outline';
@@ -57,6 +58,8 @@ export const PivotTableView: React.FC = () => {
   const [selectedPivotFeatureId, setSelectedPivotFeatureId] = useState<string>('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [filterColumnKey, setFilterColumnKey] = useState<string>('');
+  const [filterValue, setFilterValue] = useState<string>('');
   const [audioState, setAudioState] = useState<AudioState>({
     playingCellKey: null,
     objectUrl: null,
@@ -161,10 +164,24 @@ export const PivotTableView: React.FC = () => {
     });
   }, [trees, pivotFeatureFirst]);
 
+  const filterColumnOptions = useMemo(() => {
+    const opts = [{ value: '', label: 'No filter' }, { value: 'treeName', label: 'Tree' }];
+    pivotFeatureFirst.forEach((f) => opts.push({ value: f.id, label: f.name }));
+    return opts;
+  }, [pivotFeatureFirst]);
+
+  const filteredRows = useMemo(() => {
+    const trimmed = filterValue.trim();
+    if (!filterColumnKey || trimmed === '') return rows;
+    return rows.filter(
+      (row) => String(row[filterColumnKey] ?? '') === trimmed
+    );
+  }, [rows, filterColumnKey, filterValue]);
+
   const paginatedRows = useMemo(() => {
     const start = (page - 1) * pageSize;
-    return rows.slice(start, start + pageSize);
-  }, [rows, page, pageSize]);
+    return filteredRows.slice(start, start + pageSize);
+  }, [filteredRows, page, pageSize]);
 
   useEffect(() => {
     if (trees.length > 0 && selectedPivotFeatureId) {
@@ -175,7 +192,7 @@ export const PivotTableView: React.FC = () => {
 
   useEffect(() => {
     setPage(1);
-  }, [selectedPivotFeatureId, pageSize]);
+  }, [selectedPivotFeatureId, pageSize, filterColumnKey, filterValue]);
 
   const columns = useMemo(() => {
     const cols: { key: string; header: string; render?: (row: Record<string, string | number | null>) => React.ReactNode }[] = [
@@ -268,6 +285,31 @@ export const PivotTableView: React.FC = () => {
             disabled={!hasTrees || !hasFeatures}
           />
         </div>
+        {hasTrees && hasFeatures && (
+          <>
+            <div className="min-w-[180px]">
+              <Select
+                label="Filter by column"
+                options={filterColumnOptions}
+                value={filterColumnKey}
+                onChange={(e) => {
+                  setFilterColumnKey(e.target.value);
+                  if (!e.target.value) setFilterValue('');
+                }}
+              />
+            </div>
+            {filterColumnKey && (
+              <div className="min-w-[180px]">
+                <Input
+                  label="Equals"
+                  placeholder="Value"
+                  value={filterValue}
+                  onChange={(e) => setFilterValue(e.target.value)}
+                />
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {treesError && (
@@ -291,13 +333,13 @@ export const PivotTableView: React.FC = () => {
                 size="sm"
                 onClick={() =>
                   downloadCsv(
-                    rows,
+                    filteredRows,
                     columns.map((c) => ({ key: c.key, header: c.header }))
                   )
                 }
               >
                 <ArrowDownTrayIcon className="h-4 w-4 mr-2 inline" />
-                Export CSV (all trees)
+                Export CSV {filteredRows.length < rows.length ? `(${filteredRows.length} rows)` : '(all trees)'}
               </Button>
             </div>
           )}
@@ -312,14 +354,16 @@ export const PivotTableView: React.FC = () => {
                 ? 'No trees in this project'
                 : !hasFeatures
                 ? 'No features in loaded trees'
+                : filterColumnKey && filterValue.trim() && filteredRows.length === 0
+                ? 'No rows match the filter'
                 : 'No data to display'
             }
           />
-          {rows.length > 0 && (
+          {filteredRows.length > 0 && (
             <Pagination
               page={page}
               pageSize={pageSize}
-              totalItems={rows.length}
+              totalItems={filteredRows.length}
               onPageChange={setPage}
               onPageSizeChange={setPageSize}
               pageSizeOptions={[10, 25, 50]}
