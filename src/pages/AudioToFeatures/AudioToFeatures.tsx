@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { ArrowLeftIcon, MicrophoneIcon, ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { ArrowLeftIcon, MicrophoneIcon, ChevronDownIcon, ChevronRightIcon, PlayIcon, StopIcon } from '@heroicons/react/24/outline';
 import { useNavigate } from 'react-router-dom';
 import { API } from 'aws-amplify';
 import { useAudioToFeatures } from '../../hooks/useAudioToFeatures';
@@ -30,7 +30,7 @@ const listTemplateFeaturesWithDetails = /* GraphQL */ `
   }
 `;
 import { Input } from '../../components/ui/Input';
-import { isAudioS3Url } from '../../services/storageService';
+import { isAudioS3Url, downloadAudioFileFromS3 } from '../../services/storageService';
 import type { RawDataInfo } from '../../types/projectTreeFeature';
 
 export const AudioToFeatures: React.FC = () => {
@@ -72,6 +72,7 @@ export const AudioToFeatures: React.FC = () => {
     id: string; 
     name: string; 
     audioCount: number;
+    audioEntries: Array<{ featureName: string; featureId: string; url: string; rawDataId: string }>;
     existingFeatures: Array<{
       featureName: string;
       featureId: string;
@@ -97,6 +98,45 @@ export const AudioToFeatures: React.FC = () => {
     templateFeatureToDelete: string;
     templateFeaturesCount: number;
   } | null>(null);
+
+  const [playingAudioKey, setPlayingAudioKey] = useState<string | null>(null);
+  const [audioObjectUrl, setAudioObjectUrl] = useState<string | null>(null);
+  const [loadingAudioKey, setLoadingAudioKey] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+
+  const handlePlayAudio = useCallback(async (key: string, url: string) => {
+    setLoadingAudioKey(key);
+    setAudioObjectUrl(prev => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    try {
+      const blob = await downloadAudioFileFromS3(url);
+      const objectUrl = URL.createObjectURL(blob);
+      if (!audioRef.current) return;
+      audioRef.current.src = objectUrl;
+      audioRef.current.play();
+      setAudioObjectUrl(objectUrl);
+      setPlayingAudioKey(key);
+    } catch (err) {
+      console.error('Failed to load audio:', err);
+    } finally {
+      setLoadingAudioKey(null);
+    }
+  }, []);
+
+  const handleStopAudio = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+    setAudioObjectUrl(prev => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    setPlayingAudioKey(null);
+    setLoadingAudioKey(null);
+  }, []);
 
   // Calculate trees with audio files and existing features
   useEffect(() => {
@@ -124,7 +164,7 @@ export const AudioToFeatures: React.FC = () => {
           }
           
           let audioCount = 0;
-          const audioUrls: string[] = [];
+          const audioEntries: Array<{ featureName: string; featureId: string; url: string; rawDataId: string }> = [];
           const existingFeaturesMap = new Map<string, {
             featureName: string;
             featureId: string;
@@ -145,7 +185,12 @@ export const AudioToFeatures: React.FC = () => {
               // Check if this is an audio file
               if (rawData.valueString && isAudioS3Url(rawData.valueString)) {
                 audioCount++;
-                audioUrls.push(rawData.valueString);
+                audioEntries.push({
+                  featureName: feature.name || 'Unnamed Feature',
+                  featureId: feature.id,
+                  url: rawData.valueString,
+                  rawDataId: rawData.id,
+                });
                 console.log(`AudioToFeatures: Found audio file in tree ${tree.id}, feature ${feature.name}: ${rawData.valueString.substring(0, 50)}...`);
               } else {
                 // This is an extracted feature value, not an audio file
@@ -194,6 +239,7 @@ export const AudioToFeatures: React.FC = () => {
               id: tree.id,
               name: tree.name,
               audioCount,
+              audioEntries,
               existingFeatures: Array.from(existingFeaturesMap.values()),
             });
           }
@@ -574,6 +620,7 @@ export const AudioToFeatures: React.FC = () => {
 
   return (
     <div>
+      <audio ref={audioRef} className="hidden" />
       <div className="mb-6">
         <button
           onClick={() => navigate(-1)}
@@ -1064,7 +1111,7 @@ export const AudioToFeatures: React.FC = () => {
                                         </div>
                                       )}
                                     </div>
-                                    {hasExistingFeatures && !isProcessing && (
+                                    {(hasExistingFeatures || tree.audioCount > 0) && !isProcessing && (
                                       <button
                                         type="button"
                                         onClick={() => toggleTreeExpansion(tree.id)}
@@ -1085,36 +1132,83 @@ export const AudioToFeatures: React.FC = () => {
                                     )}
                                   </div>
                                   
-                                  {/* Existing Features Display */}
-                                  {isExpanded && hasExistingFeatures && (
+                                  {/* Expanded: Audios to process + Existing Features */}
+                                  {isExpanded && (hasExistingFeatures || (tree.audioEntries?.length ?? 0) > 0) && (
                                     <div className="mt-3 ml-6 space-y-3 border-l-2 border-primary-200 pl-3">
-                                      {tree.existingFeatures.map((feature) => (
-                                        <div key={feature.featureId} className="bg-white rounded p-2 border border-gray-200">
-                                          <div className="font-medium text-sm text-gray-900 mb-1">
-                                            {feature.featureName}
-                                          </div>
-                                          <div className="space-y-1">
-                                            {feature.rawData.map((rawData) => (
-                                              <div key={rawData.id} className="text-xs text-gray-600 flex items-center gap-2">
-                                                <span className="font-medium">Value:</span>
-                                                <span>
-                                                  {rawData.valueFloat !== null && rawData.valueFloat !== undefined
-                                                    ? rawData.valueFloat.toLocaleString()
-                                                    : rawData.valueString || 'N/A'}
-                                                </span>
-                                                {rawData.updatedAt && (
-                                                  <>
-                                                    <span className="text-gray-400">•</span>
-                                                    <span className="text-gray-500">
-                                                      Updated: {new Date(rawData.updatedAt).toLocaleDateString()}
-                                                    </span>
-                                                  </>
-                                                )}
-                                              </div>
-                                            ))}
+                                      {tree.audioEntries?.length > 0 && (
+                                        <div className="bg-white rounded p-2 border border-gray-200">
+                                          <div className="font-medium text-sm text-gray-900 mb-2">Audios to process</div>
+                                          <div className="space-y-2">
+                                            {tree.audioEntries.map((entry, idx) => {
+                                              const cellKey = `${tree.id}-${entry.rawDataId}`;
+                                              const isPlaying = playingAudioKey === cellKey;
+                                              const isLoading = loadingAudioKey === cellKey;
+                                              return (
+                                                <div key={entry.rawDataId} className="text-xs text-gray-600 flex items-center gap-2 flex-wrap">
+                                                  <span className="font-medium text-gray-700">{entry.featureName}</span>
+                                                  <span className="text-gray-400">•</span>
+                                                  <span className="text-gray-500">Audio {idx + 1}</span>
+                                                  <div className="flex items-center gap-1">
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => handlePlayAudio(cellKey, entry.url)}
+                                                      disabled={isLoading}
+                                                      className="rounded p-1.5 text-primary-600 hover:bg-primary-50 disabled:opacity-50"
+                                                      title="Play"
+                                                    >
+                                                      {isLoading ? (
+                                                        <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-primary-600 border-t-transparent" />
+                                                      ) : (
+                                                        <PlayIcon className="h-4 w-4" />
+                                                      )}
+                                                    </button>
+                                                    <button
+                                                      type="button"
+                                                      onClick={handleStopAudio}
+                                                      disabled={!isPlaying}
+                                                      className="rounded p-1.5 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                                                      title="Stop"
+                                                    >
+                                                      <StopIcon className="h-4 w-4" />
+                                                    </button>
+                                                  </div>
+                                                </div>
+                                              );
+                                            })}
                                           </div>
                                         </div>
-                                      ))}
+                                      )}
+                                      {hasExistingFeatures && (
+                                        <>
+                                          {tree.existingFeatures.map((feature) => (
+                                            <div key={feature.featureId} className="bg-white rounded p-2 border border-gray-200">
+                                              <div className="font-medium text-sm text-gray-900 mb-1">
+                                                {feature.featureName}
+                                              </div>
+                                              <div className="space-y-1">
+                                                {feature.rawData.map((rawData) => (
+                                                  <div key={rawData.id} className="text-xs text-gray-600 flex items-center gap-2">
+                                                    <span className="font-medium">Value:</span>
+                                                    <span>
+                                                      {rawData.valueFloat !== null && rawData.valueFloat !== undefined
+                                                        ? rawData.valueFloat.toLocaleString()
+                                                        : rawData.valueString || 'N/A'}
+                                                    </span>
+                                                    {rawData.updatedAt && (
+                                                      <>
+                                                        <span className="text-gray-400">•</span>
+                                                        <span className="text-gray-500">
+                                                          Updated: {new Date(rawData.updatedAt).toLocaleDateString()}
+                                                        </span>
+                                                      </>
+                                                    )}
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </>
+                                      )}
                                     </div>
                                   )}
                                 </div>
