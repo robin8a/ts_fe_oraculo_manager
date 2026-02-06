@@ -5,8 +5,30 @@ import { API } from 'aws-amplify';
 import { useAudioToFeatures } from '../../hooks/useAudioToFeatures';
 import { useListTemplates } from '../../hooks/useTemplate';
 import { useProjectTreeFeature } from '../../hooks/useProjectTreeFeature';
-import { updateTree } from '../../graphql/mutations';
+import { updateTree, deleteRawData } from '../../graphql/mutations';
+import { listRawData } from '../../graphql/queries';
 import { Button } from '../../components/ui/Button';
+
+const listTemplateFeaturesWithDetails = /* GraphQL */ `
+  query ListTemplateFeaturesWithDetails(
+    $filter: ModelTemplateFeatureFilterInput
+    $limit: Int
+    $nextToken: String
+  ) {
+    listTemplateFeatures(filter: $filter, limit: $limit, nextToken: $nextToken) {
+      items {
+        id
+        templateTemplateFeaturesId
+        featureTemplateFeaturesId
+        feature {
+          id
+          name
+        }
+      }
+      nextToken
+    }
+  }
+`;
 import { Input } from '../../components/ui/Input';
 import { isAudioS3Url } from '../../services/storageService';
 import type { RawDataInfo } from '../../types/projectTreeFeature';
@@ -70,6 +92,11 @@ export const AudioToFeatures: React.FC = () => {
     featuresExtracted: number;
     errors: string[];
   }>>(new Map());
+  const [reprocessProgress, setReprocessProgress] = useState<{
+    treeName: string;
+    templateFeatureToDelete: string;
+    templateFeaturesCount: number;
+  } | null>(null);
 
   // Calculate trees with audio files and existing features
   useEffect(() => {
@@ -290,7 +317,76 @@ export const AudioToFeatures: React.FC = () => {
     let totalFeaturesExtracted = 0;
 
     try {
-      // Process each tree sequentially
+      // Step 1: Fetch template feature IDs and names (delete only RawData for these features)
+      const templateFeatureIds = new Set<string>();
+      const featureIdToName = new Map<string, string>();
+      let tfNextToken: string | undefined;
+      do {
+        const tfResponse: any = await API.graphql({
+          query: listTemplateFeaturesWithDetails,
+          variables: {
+            filter: { templateTemplateFeaturesId: { eq: formData.templateId } },
+            limit: 500,
+            nextToken: tfNextToken || undefined,
+          },
+        });
+        const tfItems = tfResponse.data?.listTemplateFeatures?.items || [];
+        tfItems.forEach((tf: { featureTemplateFeaturesId?: string; feature?: { id: string; name?: string } }) => {
+          if (tf.featureTemplateFeaturesId) {
+            templateFeatureIds.add(tf.featureTemplateFeaturesId);
+            if (tf.feature?.id) featureIdToName.set(tf.feature.id, tf.feature.name || tf.feature.id);
+          }
+        });
+        tfNextToken = tfResponse.data?.listTemplateFeatures?.nextToken;
+      } while (tfNextToken);
+
+      // Step 2: For each tree, delete non-audio RawData that belong to the template's features
+      if (templateFeatureIds.size > 0) {
+        setReprocessProgress({
+          treeName: '',
+          templateFeatureToDelete: '',
+          templateFeaturesCount: templateFeatureIds.size,
+        });
+        for (const treeId of treesToProcess) {
+          const tree = treesWithAudio.find(t => t.id === treeId);
+          setReprocessProgress(prev => prev ? { ...prev, treeName: tree?.name || treeId } : null);
+          try {
+            let rawNextToken: string | undefined;
+            do {
+              const rawResponse: any = await API.graphql({
+                query: listRawData,
+                variables: {
+                  filter: { treeRawDataId: { eq: treeId } },
+                  limit: 100,
+                  nextToken: rawNextToken || undefined,
+                },
+              });
+              const rawItems = rawResponse.data?.listRawData?.items || [];
+              for (const raw of rawItems) {
+                const featureId = raw.featureRawDatasId;
+                const valueString = raw.valueString ?? '';
+                if (featureId && templateFeatureIds.has(featureId) && !isAudioS3Url(valueString)) {
+                  setReprocessProgress(prev => prev ? { ...prev, templateFeatureToDelete: featureIdToName.get(featureId) || featureId } : null);
+                  try {
+                    await API.graphql({
+                      query: deleteRawData,
+                      variables: { input: { id: raw.id } },
+                    });
+                  } catch (delErr: any) {
+                    console.error(`AudioToFeatures: Failed to delete RawData ${raw.id} for tree ${treeId}:`, delErr);
+                  }
+                }
+              }
+              rawNextToken = rawResponse.data?.listRawData?.nextToken;
+            } while (rawNextToken);
+          } catch (listErr: any) {
+            console.error(`AudioToFeatures: Failed to list RawData for tree ${treeId}:`, listErr);
+          }
+        }
+        setReprocessProgress(null);
+      }
+
+      // Process each tree sequentially (Lambda creates new RawData)
       for (let i = 0; i < treesToProcess.length; i++) {
       const treeId = treesToProcess[i];
       const tree = treesWithAudio.find(t => t.id === treeId);
@@ -449,7 +545,7 @@ export const AudioToFeatures: React.FC = () => {
       console.error('AudioToFeatures: Unexpected error during batch processing:', err);
       throw err;
     } finally {
-      // Always clear batch processing state
+      setReprocessProgress(null);
       setBatchProcessing(false);
     }
   };
@@ -501,6 +597,27 @@ export const AudioToFeatures: React.FC = () => {
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
           <p className="text-red-800 font-medium">Error</p>
           <p className="text-red-600 mt-1 whitespace-pre-wrap">{error}</p>
+        </div>
+      )}
+
+      {/* Reprocess progress (cleaning RawData before Process Audio) */}
+      {batchProcessing && reprocessProgress && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-6 mb-6">
+          <p className="text-amber-800 font-medium text-lg mb-3">Reprocess progress</p>
+          <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
+            <div>
+              <dt className="font-medium text-amber-900">Tree</dt>
+              <dd className="text-amber-800">{reprocessProgress.treeName || '—'}</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-amber-900">Actual template feature to delete</dt>
+              <dd className="text-amber-800">{reprocessProgress.templateFeatureToDelete || '—'}</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-amber-900">Template features actual count</dt>
+              <dd className="text-amber-800">{reprocessProgress.templateFeaturesCount}</dd>
+            </div>
+          </dl>
         </div>
       )}
 
