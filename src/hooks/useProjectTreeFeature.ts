@@ -162,17 +162,21 @@ export function useProjectTreeFeature(treeLimit?: number, unprocessedOnly?: bool
             };
           }
           
-          // Fetch Trees with RawData for this project using pagination
+          // Fetch Trees with RawData for this project
+          // When treeLimit > 0: fetch only one page (no pagination) for faster initial load
+          // When treeLimit is 0 or undefined: paginate through all trees (same as Projects & Trees)
           const allTreesData: any[] = [];
+          const pageSize = 100;
+          const usePagination = !(treeLimit != null && treeLimit > 0);
           let nextToken: string | null | undefined = undefined;
-          const pageSize = 100; // Always fetch 100 at a time
 
           do {
+            const limit = usePagination ? pageSize : Math.min(treeLimit ?? pageSize, 1000);
             const treesResponse: any = await API.graphql({
               query: listTreesWithRawData,
               variables: {
                 filter,
-                limit: pageSize,
+                limit,
                 nextToken: nextToken || undefined,
               },
             });
@@ -180,6 +184,8 @@ export function useProjectTreeFeature(treeLimit?: number, unprocessedOnly?: bool
             const pageTrees = treesResponse.data?.listTrees?.items || [];
             allTreesData.push(...pageTrees);
             nextToken = treesResponse.data?.listTrees?.nextToken;
+
+            if (!usePagination) break; // single page when treeLimit > 0
           } while (nextToken);
 
           const totalTreeCount = allTreesData.length;

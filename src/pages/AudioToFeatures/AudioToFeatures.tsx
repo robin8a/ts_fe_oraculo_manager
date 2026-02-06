@@ -18,7 +18,7 @@ export const AudioToFeatures: React.FC = () => {
   
   const [treeLimit, setTreeLimit] = useState<number>(100);
   const [loadingMoreTrees, setLoadingMoreTrees] = useState(false);
-  const [showUnprocessedOnly, setShowUnprocessedOnly] = useState<boolean>(true);
+  const [showUnprocessedOnly, setShowUnprocessedOnly] = useState<boolean>(false);
   const [filterFeatureId, setFilterFeatureId] = useState<string>('');
   const [filterFeatureValue, setFilterFeatureValue] = useState<string>('');
   const { projects, loading: projectsLoading, refetch: refetchProjects } = useProjectTreeFeature(treeLimit, showUnprocessedOnly);
@@ -183,6 +183,11 @@ export const AudioToFeatures: React.FC = () => {
     }
   }, [projects, projectsLoading, showUnprocessedOnly, filterFeatureId, filterFeatureValue]);
 
+  // Clear "loading more" state when projects finish loading
+  useEffect(() => {
+    if (!projectsLoading) setLoadingMoreTrees(false);
+  }, [projectsLoading]);
+
   const toggleTreeExpansion = (treeId: string) => {
     setExpandedTrees(prev => {
       const newSet = new Set(prev);
@@ -202,6 +207,12 @@ export const AudioToFeatures: React.FC = () => {
     setTreeLimit(newLimit);
     // The hook will automatically refetch when treeLimit changes
     // The loadingMoreTrees state will be cleared by the useEffect when projects finish loading
+  };
+
+  const handleLoadAllTrees = () => {
+    setLoadingMoreTrees(true);
+    // 0 means no limit in useProjectTreeFeature
+    setTreeLimit(0);
   };
 
   const validate = () => {
@@ -798,6 +809,23 @@ export const AudioToFeatures: React.FC = () => {
                     >
                       Clear filter
                     </button>
+                  )}
+                </div>
+                {/* Load all trees (for filter) */}
+                <div className="flex items-center gap-3 pt-1">
+                  {treeLimit > 0 ? (
+                    <Button
+                      type="button"
+                      onClick={handleLoadAllTrees}
+                      disabled={loadingMoreTrees || projectsLoading || batchProcessing}
+                      variant="outline"
+                      isLoading={loadingMoreTrees}
+                      className="min-w-[140px]"
+                    >
+                      Load all trees
+                    </Button>
+                  ) : (
+                    <span className="text-sm text-gray-500">All trees loaded (no limit).</span>
                   )}
                 </div>
                 {filterFeatureId && filterFeatureValue.trim() && (
