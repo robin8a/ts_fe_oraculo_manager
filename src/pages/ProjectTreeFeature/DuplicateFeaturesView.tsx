@@ -1,7 +1,10 @@
 import React, { useMemo, useState } from 'react';
+import { API } from 'aws-amplify';
 import { useProjectTreeFeature } from '../../hooks/useProjectTreeFeature';
+import { deleteRawData } from '../../graphql/mutations';
 import type { ProjectWithTrees, TreeWithFeatures, FeatureInfo } from '../../types/projectTreeFeature';
-import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { Button } from '../../components/ui/Button';
+import { ExclamationTriangleIcon, TrashIcon } from '@heroicons/react/24/outline';
 
 interface DuplicatedFeature {
   feature: FeatureInfo;
@@ -47,6 +50,8 @@ function computeTreesWithDuplicates(projects: ProjectWithTrees[]): TreeWithDupli
 export const DuplicateFeaturesView: React.FC = () => {
   const { projects, loading, error, refetch } = useProjectTreeFeature();
   const [selectedTreeIds, setSelectedTreeIds] = useState<Set<string>>(new Set());
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const treesWithDuplicates = useMemo(
     () => computeTreesWithDuplicates(projects),
@@ -67,6 +72,41 @@ export const DuplicateFeaturesView: React.FC = () => {
       setSelectedTreeIds(new Set());
     } else {
       setSelectedTreeIds(new Set(treesWithDuplicates.map((t) => t.tree.id)));
+    }
+  };
+
+  const handleDeleteDuplicates = async () => {
+    const selected = treesWithDuplicates.filter((t) => selectedTreeIds.has(t.tree.id));
+    if (selected.length === 0) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      for (const { tree, duplicatedFeatures } of selected) {
+        for (const { feature } of duplicatedFeatures) {
+          const rawDataList = feature.rawData ?? [];
+          if (rawDataList.length <= 1) continue;
+          // Keep oldest by createdAt; delete the rest
+          const sorted = [...rawDataList].sort((a, b) => {
+            const aT = a.createdAt ?? '';
+            const bT = b.createdAt ?? '';
+            return aT.localeCompare(bT);
+          });
+          const toDelete = sorted.slice(1);
+          for (const raw of toDelete) {
+            await API.graphql({
+              query: deleteRawData,
+              variables: { input: { id: raw.id } },
+            });
+          }
+        }
+      }
+      setSelectedTreeIds(new Set());
+      await refetch();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to delete duplicates';
+      setDeleteError(message);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -168,9 +208,24 @@ export const DuplicateFeaturesView: React.FC = () => {
           </div>
 
           {selectedTreeIds.size > 0 && (
-            <p className="text-sm text-gray-600">
-              {selectedTreeIds.size} tree(s) selected. Delete-duplicates action can be added here to remove extra RawData for selected trees.
-            </p>
+            <div className="flex flex-col gap-3">
+              <Button
+                variant="danger"
+                onClick={handleDeleteDuplicates}
+                disabled={isDeleting}
+                isLoading={isDeleting}
+                className="inline-flex items-center gap-2 w-fit"
+              >
+                <TrashIcon className="h-5 w-5" />
+                Delete duplicates for selected trees ({selectedTreeIds.size})
+              </Button>
+              {deleteError && (
+                <div className="flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  <ExclamationTriangleIcon className="h-5 w-5 flex-shrink-0" />
+                  {deleteError}
+                </div>
+              )}
+            </div>
           )}
         </>
       )}
