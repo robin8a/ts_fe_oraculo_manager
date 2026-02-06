@@ -218,7 +218,7 @@ export const DuplicateFeaturesView: React.FC = () => {
 
           <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
             <ul className="divide-y divide-gray-200">
-              {treesWithDuplicates.map(({ projectId, projectName, tree, duplicatedFeatures }) => {
+              {treesWithDuplicates.map(({ projectName, tree, duplicatedFeatures }) => {
                 const isSelected = selectedTreeIds.has(tree.id);
                 const totalToRemove = duplicatedFeatures.reduce((s, d) => s + d.toRemove, 0);
                 return (

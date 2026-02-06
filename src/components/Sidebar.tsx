@@ -17,6 +17,7 @@ import {
   DocumentIcon,
   DocumentDuplicateIcon,
   MicrophoneIcon,
+  TableCellsIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../hooks/useAuth';
 
@@ -87,6 +88,11 @@ const navigation: NavItem[] = [
     name: 'Duplicate features',
     href: '/projects/duplicates',
     icon: DocumentDuplicateIcon,
+  },
+  {
+    name: 'Pivot table',
+    href: '/projects/pivot',
+    icon: TableCellsIcon,
   },
   {
     name: 'KoboToolbox Import',
