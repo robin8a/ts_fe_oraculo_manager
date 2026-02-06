@@ -65,3 +65,13 @@ extracted_data = response.text # This is now a JSON string
 KoboToolbox Import allow me to set a date day to be process using the field "start"
 
 There is a new property "are_audios_processed" in the "Tree" entity, after process the audios set in true, and use this property
+
+## Pivoted Table 
+
+Help to create a new UI component and add to the sidebar, where allow: 
+- Select the project to load the trees that belongs to the project
+- Select the feature that is going to be use to pivot the table
+- Load the trees and show a table pivoted by pivoted feature with all the features values in a single row
+- Add pagination to the table
+- Add a button to export the table to a CSV file
+

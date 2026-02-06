@@ -7,7 +7,7 @@ import { Table } from '../../components/ui/Table';
 import { Select } from '../../components/ui/Select';
 import { Button } from '../../components/ui/Button';
 import { Pagination } from '../../components/ui/Pagination';
-import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { ExclamationTriangleIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 
 interface ProjectOption {
   id: string;
@@ -20,6 +20,27 @@ function getFeatureValue(feature: FeatureInfo): string | number | null {
   if (first.valueFloat != null) return first.valueFloat;
   if (first.valueString != null) return first.valueString;
   return null;
+}
+
+function escapeCsvCell(value: string | number | null): string {
+  const s = value == null ? '' : String(value);
+  if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function downloadCsv(rows: Record<string, string | number | null>[], columns: { key: string; header: string }[]): void {
+  const headerLine = columns.map((c) => escapeCsvCell(c.header)).join(',');
+  const dataLines = rows.map((row) =>
+    columns.map((c) => escapeCsvCell(row[c.key] ?? null)).join(',')
+  );
+  const csv = [headerLine, ...dataLines].join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `pivot-table-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export const PivotTableView: React.FC = () => {
@@ -188,6 +209,23 @@ export const PivotTableView: React.FC = () => {
 
       {!treesError && (
         <>
+          {rows.length > 0 && (
+            <div className="flex justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  downloadCsv(
+                    rows,
+                    columns.map((c) => ({ key: c.key, header: c.header }))
+                  )
+                }
+              >
+                <ArrowDownTrayIcon className="h-4 w-4 mr-2 inline" />
+                Export CSV (all trees)
+              </Button>
+            </div>
+          )}
           <Table
             data={paginatedRows}
             columns={columns}
