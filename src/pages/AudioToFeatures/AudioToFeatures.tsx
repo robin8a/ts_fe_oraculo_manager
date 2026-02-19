@@ -60,6 +60,28 @@ export const AudioToFeatures: React.FC = () => {
     return Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [projects]);
 
+  // Processed trees with "Audio Levantamiento" feature value (for list at end)
+  const processedTreesWithAudioLevantamiento = useMemo(() => {
+    const FEATURE_NAME = 'Audio Levantamiento';
+    const list: Array<{ name: string; audioLevantamiento: string | number | null }> = [];
+    projects.forEach(project => {
+      project.trees.forEach(tree => {
+        if (tree.are_audios_processed !== true) return;
+        const feature = (tree.features || []).find(
+          (f: { name: string | null }) => (f.name || '').trim() === FEATURE_NAME
+        );
+        let audioLevantamiento: string | number | null = null;
+        if (feature && (feature as { rawData?: RawDataInfo[] }).rawData?.length) {
+          const first = (feature as { rawData: RawDataInfo[] }).rawData[0];
+          if (first.valueFloat != null) audioLevantamiento = first.valueFloat;
+          else if (first.valueString != null && first.valueString.trim() !== '') audioLevantamiento = first.valueString.trim();
+        }
+        list.push({ name: tree.name, audioLevantamiento });
+      });
+    });
+    return list;
+  }, [projects]);
+
   const [formData, setFormData] = useState({
     templateId: '',
     geminiApiKey: '',
@@ -1276,6 +1298,42 @@ export const AudioToFeatures: React.FC = () => {
           <div className="flex items-center justify-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mr-3"></div>
             <p className="text-gray-700">Processing audio files... This may take a few minutes.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Processed trees: Name + Audio Levantamiento */}
+      {processedTreesWithAudioLevantamiento.length > 0 && (
+        <div className="mt-6 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Processed trees</h2>
+          <p className="text-sm text-gray-500 mb-4">Trees that have been processed, with feature &quot;Audio Levantamiento&quot;.</p>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead>
+                <tr>
+                  <th scope="col" className="px-4 py-2 text-left text-sm font-medium text-gray-700 bg-gray-50">
+                    Name
+                  </th>
+                  <th scope="col" className="px-4 py-2 text-left text-sm font-medium text-gray-700 bg-gray-50">
+                    Audio Levantamiento
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 bg-white">
+                {processedTreesWithAudioLevantamiento.map((row, idx) => (
+                  <tr key={idx}>
+                    <td className="px-4 py-2 text-sm text-gray-900 whitespace-nowrap">{row.name}</td>
+                    <td className="px-4 py-2 text-sm text-gray-600">
+                      {row.audioLevantamiento !== null
+                        ? typeof row.audioLevantamiento === 'number'
+                          ? row.audioLevantamiento.toLocaleString()
+                          : row.audioLevantamiento
+                        : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
