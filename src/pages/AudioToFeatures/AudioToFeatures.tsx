@@ -122,7 +122,7 @@ export const AudioToFeatures: React.FC = () => {
   } | null>(null);
 
   const [playingAudioKey, setPlayingAudioKey] = useState<string | null>(null);
-  const [audioObjectUrl, setAudioObjectUrl] = useState<string | null>(null);
+  const [_audioObjectUrl, setAudioObjectUrl] = useState<string | null>(null);
   const [loadingAudioKey, setLoadingAudioKey] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
 
@@ -167,6 +167,7 @@ export const AudioToFeatures: React.FC = () => {
         id: string; 
         name: string; 
         audioCount: number;
+        audioEntries: Array<{ featureName: string; featureId: string; url: string; rawDataId: string }>;
         existingFeatures: Array<{
           featureName: string;
           featureId: string;
