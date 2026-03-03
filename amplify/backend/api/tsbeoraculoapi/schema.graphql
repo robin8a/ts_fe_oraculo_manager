@@ -12,6 +12,8 @@ type ModelAI @model {
   is_approved: Boolean!
   tokens_cost: Int!
   cost_tokens: Int!
+  modelAIParent: ModelAI @belongsTo # Self-referencing
+  modelAIs: [ModelAI] @hasMany
   calculations: [Calculation] @hasMany
 }
 
@@ -30,6 +32,8 @@ type Calculation @model {
 
 type User @model {
   id: ID!
+  departamento: String
+  municipio: String
   user_model_packages: [UserModelPackage] @hasMany
   calculations: [Calculation] @hasMany
 }
@@ -579,3 +583,18 @@ type RawData @model {
   feature: Feature @belongsTo 
   tree: Tree @belongsTo
 }
+
+# type Topology @model {
+#  id: ID!
+#  name: String!
+#  string_code: String
+#  number_code: String
+#  status: String
+#  polygon: AWSJSON
+#  topologyParent: Topology @belongsTo # Self-referencing
+#  topologies: [Topology] @hasMany
+#  topologyTrees: [TopologyTree] @hasMany
+#}
+#
+#
+#  trees: [Tree] @hasMany
