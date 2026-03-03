@@ -54,6 +54,46 @@ export const ModelAIList: React.FC = () => {
       ),
     },
     {
+      key: 'parent',
+      header: 'Parent',
+      render: (item: ModelAI) => (
+        item.modelAIParent ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(`/modelai/${item.modelAIParent!.id}`);
+            }}
+            className="text-primary-600 hover:text-primary-900 text-left"
+          >
+            {item.modelAIParent.name}
+          </button>
+        ) : (
+          <span className="text-gray-400">—</span>
+        )
+      ),
+    },
+    {
+      key: 'children',
+      header: 'Children',
+      render: (item: ModelAI) => {
+        const count = item.modelAIs?.length ?? 0;
+        if (count === 0) return <span className="text-gray-400">0</span>;
+        return (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(`/modelai/${item.id}`);
+            }}
+            className="text-primary-600 hover:text-primary-900"
+          >
+            {count} {count === 1 ? 'child' : 'children'}
+          </button>
+        );
+      },
+    },
+    {
       key: 'description',
       header: 'Description',
       render: (item: ModelAI) => (
@@ -181,6 +221,11 @@ export const ModelAIList: React.FC = () => {
         size="md"
       >
         <div className="mt-4">
+          {deleteModal.modelAI && (deleteModal.modelAI.modelAIs?.length ?? 0) > 0 && (
+            <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+              This model has <strong>{deleteModal.modelAI.modelAIs!.length} child model(s)</strong>. Delete or reassign them first, or the relationship may be left in an invalid state.
+            </p>
+          )}
           <p className="text-sm text-gray-500">
             Are you sure you want to delete <strong>{deleteModal.modelAI?.name}</strong>? This action cannot be undone.
           </p>
@@ -195,6 +240,7 @@ export const ModelAIList: React.FC = () => {
               variant="danger"
               onClick={handleDelete}
               isLoading={deleting}
+              disabled={(deleteModal.modelAI?.modelAIs?.length ?? 0) > 0}
             >
               Delete
             </Button>

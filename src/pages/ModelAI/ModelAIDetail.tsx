@@ -5,6 +5,7 @@ import {
   PencilIcon, 
   TrashIcon,
   LinkIcon,
+  PlusIcon,
 } from '@heroicons/react/24/outline';
 import { useGetModelAI, useDeleteModelAI } from '../../hooks/useModelAI';
 import { Button } from '../../components/ui/Button';
@@ -57,6 +58,19 @@ export const ModelAIDetail: React.FC = () => {
         </button>
         <div className="flex justify-between items-start">
           <div>
+            {modelAI.modelAIParent && (
+              <p className="text-sm text-gray-500 mb-1">
+                <button
+                  type="button"
+                  onClick={() => navigate(`/modelai/${modelAI.modelAIParent!.id}`)}
+                  className="text-primary-600 hover:text-primary-900"
+                >
+                  {modelAI.modelAIParent.name}
+                </button>
+                <span className="mx-1">›</span>
+                <span className="text-gray-700">{modelAI.name}</span>
+              </p>
+            )}
             <h1 className="text-3xl font-bold text-gray-900">{modelAI.name}</h1>
             <p className="mt-1 text-sm text-gray-500">ModelAI Details</p>
           </div>
@@ -84,6 +98,23 @@ export const ModelAIDetail: React.FC = () => {
           <div>
             <dt className="text-sm font-medium text-gray-500">ID</dt>
             <dd className="mt-1 text-sm text-gray-900 font-mono">{modelAI.id}</dd>
+          </div>
+
+          <div>
+            <dt className="text-sm font-medium text-gray-500">Parent</dt>
+            <dd className="mt-1 text-sm text-gray-900">
+              {modelAI.modelAIParent ? (
+                <button
+                  type="button"
+                  onClick={() => navigate(`/modelai/${modelAI.modelAIParent!.id}`)}
+                  className="text-primary-600 hover:text-primary-900"
+                >
+                  {modelAI.modelAIParent.name}
+                </button>
+              ) : (
+                <span className="text-gray-500">None (root)</span>
+              )}
+            </dd>
           </div>
 
           <div>
@@ -168,6 +199,38 @@ export const ModelAIDetail: React.FC = () => {
               </dd>
             </div>
           )}
+
+          <div className="sm:col-span-2">
+            <dt className="text-sm font-medium text-gray-500">Child models</dt>
+            <dd className="mt-1">
+              {(modelAI.modelAIs?.length ?? 0) > 0 ? (
+                <ul className="list-disc list-inside space-y-1">
+                  {modelAI.modelAIs!.map((child) => (
+                    <li key={child.id}>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/modelai/${child.id}`)}
+                        className="text-primary-600 hover:text-primary-900 text-left"
+                      >
+                        {child.name}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <span className="text-gray-500">None</span>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-2"
+                onClick={() => navigate(`/modelai/create?parentId=${id}`)}
+              >
+                <PlusIcon className="h-4 w-4 mr-1 inline" />
+                Add child
+              </Button>
+            </dd>
+          </div>
         </dl>
       </div>
 
@@ -178,6 +241,11 @@ export const ModelAIDetail: React.FC = () => {
         size="md"
       >
         <div className="mt-4">
+          {(modelAI.modelAIs?.length ?? 0) > 0 && (
+            <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+              This model has <strong>{modelAI.modelAIs!.length} child model(s)</strong>. Delete or reassign them first.
+            </p>
+          )}
           <p className="text-sm text-gray-500">
             Are you sure you want to delete <strong>{modelAI.name}</strong>? This action cannot be undone.
           </p>
@@ -192,6 +260,7 @@ export const ModelAIDetail: React.FC = () => {
               variant="danger"
               onClick={handleDelete}
               isLoading={deleting}
+              disabled={(modelAI.modelAIs?.length ?? 0) > 0}
             >
               Delete
             </Button>

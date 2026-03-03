@@ -1,16 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
-import { useGetModelAI, useUpdateModelAI } from '../../hooks/useModelAI';
+import { useGetModelAI, useUpdateModelAI, useListModelAIs } from '../../hooks/useModelAI';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Textarea } from '../../components/ui/Textarea';
+import { Select } from '../../components/ui/Select';
 
 export const ModelAIEdit: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const { modelAI, loading: fetching, error: fetchError } = useGetModelAI(id || '');
   const { updateModelAI, loading: updating, error: updateError } = useUpdateModelAI();
+  const { modelAIs } = useListModelAIs();
+
+  const parentOptions = useMemo(() => {
+    const opts = [{ value: '', label: 'None (root)' }];
+    modelAIs
+      .filter((m) => m.id !== id)
+      .forEach((m) => opts.push({ value: m.id, label: m.name }));
+    return opts;
+  }, [modelAIs, id]);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -21,6 +31,7 @@ export const ModelAIEdit: React.FC = () => {
     is_approved: false,
     tokens_cost: 0,
     cost_tokens: 0,
+    modelAIModelAIParentId: '',
   });
 
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
@@ -36,6 +47,7 @@ export const ModelAIEdit: React.FC = () => {
         is_approved: modelAI.is_approved,
         tokens_cost: modelAI.tokens_cost,
         cost_tokens: modelAI.cost_tokens,
+        modelAIModelAIParentId: modelAI.modelAIModelAIParentId ?? '',
       });
     }
   }, [modelAI]);
@@ -79,6 +91,7 @@ export const ModelAIEdit: React.FC = () => {
     const result = await updateModelAI({
       id,
       ...formData,
+      modelAIModelAIParentId: formData.modelAIModelAIParentId || undefined,
     });
 
     if (result) {
@@ -86,7 +99,7 @@ export const ModelAIEdit: React.FC = () => {
     }
   };
 
-  const handleChange = (field: string, value: string | number | boolean) => {
+  const handleChange = (field: string, value: string | number | boolean | undefined) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
     if (formErrors[field]) {
       setFormErrors((prev) => {
@@ -149,6 +162,16 @@ export const ModelAIEdit: React.FC = () => {
                 onChange={(e) => handleChange('name', e.target.value)}
                 error={formErrors.name}
                 required
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <Select
+                label="Parent model"
+                options={parentOptions}
+                value={formData.modelAIModelAIParentId}
+                onChange={(e) => handleChange('modelAIModelAIParentId', e.target.value)}
+                placeholder="None (root)"
               />
             </div>
 

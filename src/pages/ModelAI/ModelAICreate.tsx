@@ -1,15 +1,25 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
-import { useCreateModelAI } from '../../hooks/useModelAI';
+import { useCreateModelAI, useListModelAIs } from '../../hooks/useModelAI';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Textarea } from '../../components/ui/Textarea';
+import { Select } from '../../components/ui/Select';
 
 export const ModelAICreate: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const parentIdFromQuery = searchParams.get('parentId') ?? '';
   const { createModelAI, loading, error } = useCreateModelAI();
-  
+  const { modelAIs } = useListModelAIs();
+
+  const parentOptions = useMemo(() => {
+    const opts = [{ value: '', label: 'None (root)' }];
+    modelAIs.forEach((m) => opts.push({ value: m.id, label: m.name }));
+    return opts;
+  }, [modelAIs]);
+
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -19,7 +29,14 @@ export const ModelAICreate: React.FC = () => {
     is_approved: false,
     tokens_cost: 0,
     cost_tokens: 0,
+    modelAIModelAIParentId: '',
   });
+
+  useEffect(() => {
+    if (parentIdFromQuery) {
+      setFormData((prev) => ({ ...prev, modelAIModelAIParentId: parentIdFromQuery }));
+    }
+  }, [parentIdFromQuery]);
 
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
@@ -65,7 +82,7 @@ export const ModelAICreate: React.FC = () => {
     }
   };
 
-  const handleChange = (field: string, value: string | number | boolean) => {
+  const handleChange = (field: string, value: string | number | boolean | undefined) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
     if (formErrors[field]) {
       setFormErrors((prev) => {
@@ -107,6 +124,16 @@ export const ModelAICreate: React.FC = () => {
                 onChange={(e) => handleChange('name', e.target.value)}
                 error={formErrors.name}
                 required
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <Select
+                label="Parent model"
+                options={parentOptions}
+                value={formData.modelAIModelAIParentId}
+                onChange={(e) => handleChange('modelAIModelAIParentId', e.target.value)}
+                placeholder="None (root)"
               />
             </div>
 

@@ -1,3 +1,9 @@
+/** Minimal shape for parent/child in lists */
+export interface ModelAIRef {
+  id: string;
+  name: string;
+}
+
 export interface ModelAI {
   id: string;
   name: string;
@@ -8,6 +14,9 @@ export interface ModelAI {
   is_approved: boolean;
   tokens_cost: number;
   cost_tokens: number;
+  modelAIModelAIParentId?: string | null;
+  modelAIParent?: ModelAIRef | null;
+  modelAIs?: ModelAIRef[] | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -21,6 +30,7 @@ export interface CreateModelAIInput {
   is_approved: boolean;
   tokens_cost: number;
   cost_tokens: number;
+  modelAIModelAIParentId?: string | null;
 }
 
 export interface UpdateModelAIInput {
@@ -33,6 +43,7 @@ export interface UpdateModelAIInput {
   is_approved?: boolean;
   tokens_cost?: number;
   cost_tokens?: number;
+  modelAIModelAIParentId?: string | null;
 }
 
 
