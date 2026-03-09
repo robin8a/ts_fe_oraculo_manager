@@ -100,19 +100,19 @@ export const ModelAIDetail: React.FC = () => {
             <dd className="mt-1 text-sm text-gray-900 font-mono">{modelAI.id}</dd>
           </div>
 
-          <div>
-            <dt className="text-sm font-medium text-gray-500">Parent</dt>
+          <div className="sm:col-span-2">
+            <dt className="text-sm font-medium text-gray-700">Parent (ModelAI)</dt>
             <dd className="mt-1 text-sm text-gray-900">
-              {modelAI.modelAIParent ? (
+              {modelAI.modelAIParent?.id ? (
                 <button
                   type="button"
                   onClick={() => navigate(`/modelai/${modelAI.modelAIParent!.id}`)}
                   className="text-primary-600 hover:text-primary-900"
                 >
-                  {modelAI.modelAIParent.name}
+                  {modelAI.modelAIParent.name || modelAI.modelAIParent.id}
                 </button>
               ) : (
-                <span className="text-gray-500">None (root)</span>
+                <span className="text-gray-600">None (root)</span>
               )}
             </dd>
           </div>

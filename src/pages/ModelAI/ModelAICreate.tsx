@@ -129,9 +129,9 @@ export const ModelAICreate: React.FC = () => {
 
             <div className="md:col-span-2">
               <Select
-                label="Parent model"
+                label="Parent"
                 options={parentOptions}
-                value={formData.modelAIModelAIParentId}
+                value={formData.modelAIModelAIParentId ?? ''}
                 onChange={(e) => handleChange('modelAIModelAIParentId', e.target.value)}
                 placeholder="None (root)"
               />

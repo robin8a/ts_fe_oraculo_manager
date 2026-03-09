@@ -55,9 +55,9 @@ export const ModelAIList: React.FC = () => {
     },
     {
       key: 'parent',
-      header: 'Parent',
+      header: 'Parent (ModelAI)',
       render: (item: ModelAI) => (
-        item.modelAIParent ? (
+        item.modelAIParent?.id ? (
           <button
             type="button"
             onClick={(e) => {
@@ -66,7 +66,7 @@ export const ModelAIList: React.FC = () => {
             }}
             className="text-primary-600 hover:text-primary-900 text-left"
           >
-            {item.modelAIParent.name}
+            {item.modelAIParent.name || item.modelAIParent.id}
           </button>
         ) : (
           <span className="text-gray-400">—</span>
