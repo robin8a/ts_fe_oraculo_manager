@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { API } from 'aws-amplify';
 import type { ModelAI } from '../types/modelai';
+import { getModelAI, listModelAIS } from '../amplify_custom/queries';
+import { createModelAI as createModelAIMutation, updateModelAI as updateModelAIMutation, deleteModelAI as deleteModelAIMutation } from '../graphql/mutations';
 
 /** Normalize parent to { id, name } or null; ensure modelAIParent is always in a shape the UI can display */
 function normalizeParent(parent: any): { id: string; name: string } | null {
@@ -39,99 +41,9 @@ function normalizeModelAI(item: any): ModelAI | null {
   };
 }
 
-// Deployed schema has modelAIParent @belongsTo and modelAIs @hasMany.
-// CreateModelAIInput/UpdateModelAIInput do not accept modelAIParentId or modelAIModelAIParentId in this project's API — parent not sent. Set SEND_PARENT_FK = true and PARENT_FK_FIELD to the exact input field name from amplify codegen when the API supports it.
-const PARENT_FK_FIELD = 'modelAIParentId';
-const SEND_PARENT_FK = false;
-
-const PARENT_CHILDREN_FIELDS = `
-  modelAIParent { id name }
-  modelAIs { items { id name } }
-`;
-
-const GET_MODEL_AI = `
-  query GetModelAI($id: ID!) {
-    getModelAI(id: $id) {
-      id
-      name
-      description
-      document_link
-      api_link
-      version
-      is_approved
-      tokens_cost
-      cost_tokens
-      createdAt
-      updatedAt
-      ${PARENT_CHILDREN_FIELDS}
-    }
-  }
-`;
-
-const LIST_MODEL_AIS_ALT = `
-  query ListModelAIS {
-    listModelAIS {
-      items {
-        id
-        name
-        description
-        document_link
-        api_link
-        version
-        is_approved
-        tokens_cost
-        cost_tokens
-        createdAt
-        updatedAt
-        ${PARENT_CHILDREN_FIELDS}
-      }
-    }
-  }
-`;
-
-const CREATE_MODEL_AI = `
-  mutation CreateModelAI($input: CreateModelAIInput!) {
-    createModelAI(input: $input) {
-      id
-      name
-      description
-      document_link
-      api_link
-      version
-      is_approved
-      tokens_cost
-      cost_tokens
-      createdAt
-      updatedAt
-    }
-  }
-`;
-
-const UPDATE_MODEL_AI = `
-  mutation UpdateModelAI($input: UpdateModelAIInput!) {
-    updateModelAI(input: $input) {
-      id
-      name
-      description
-      document_link
-      api_link
-      version
-      is_approved
-      tokens_cost
-      cost_tokens
-      createdAt
-      updatedAt
-    }
-  }
-`;
-
-const DELETE_MODEL_AI = `
-  mutation DeleteModelAI($input: DeleteModelAIInput!) {
-    deleteModelAI(input: $input) {
-      id
-    }
-  }
-`;
+// Parent FK on create/update input (from graphql/mutations): modelAIModelAIsId
+const PARENT_FK_FIELD = 'modelAIModelAIsId';
+const SEND_PARENT_FK = true;
 
 export interface UseListModelAIsResult {
   modelAIs: ModelAI[];
@@ -149,9 +61,9 @@ export function useListModelAIs(): UseListModelAIsResult {
     try {
       setLoading(true);
       setError(null);
-      // API exposes listModelAIS (capital S), not listModelAIs
       const response: any = await API.graphql({
-        query: LIST_MODEL_AIS_ALT
+        query: listModelAIS,
+        variables: {}
       });
       const rawItems = response.data?.listModelAIS?.items ?? [];
       setModelAIs(normalizeModelAIItems(rawItems));
@@ -196,7 +108,7 @@ export function useGetModelAI(id: string): UseGetModelAIResult {
       setLoading(true);
       setError(null);
       const response: any = await API.graphql({
-        query: GET_MODEL_AI,
+        query: getModelAI,
         variables: { id }
       });
       setModelAI(normalizeModelAI(response.data?.getModelAI) ?? null);
@@ -236,7 +148,7 @@ export function useCreateModelAI(): UseCreateModelAIResult {
         if (parentId !== undefined) apiInput[PARENT_FK_FIELD] = parentId;
       }
       const response: any = await API.graphql({
-        query: CREATE_MODEL_AI,
+        query: createModelAIMutation,
         variables: { input: apiInput }
       });
       return normalizeModelAI(response.data?.createModelAI) ?? null;
@@ -273,7 +185,7 @@ export function useUpdateModelAI(): UseUpdateModelAIResult {
         apiInput[PARENT_FK_FIELD] = parentId;
       }
       const response: any = await API.graphql({
-        query: UPDATE_MODEL_AI,
+        query: updateModelAIMutation,
         variables: { input: apiInput }
       });
       return normalizeModelAI(response.data?.updateModelAI) ?? null;
@@ -304,7 +216,7 @@ export function useDeleteModelAI(): UseDeleteModelAIResult {
       setLoading(true);
       setError(null);
       await API.graphql({
-        query: DELETE_MODEL_AI,
+        query: deleteModelAIMutation,
         variables: { input: { id } }
       });
       return true;
