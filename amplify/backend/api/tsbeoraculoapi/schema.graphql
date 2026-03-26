@@ -552,6 +552,7 @@ type Tree @model {
   project: Project @belongsTo 
   template: Template @belongsTo
   rawData: [RawData] @hasMany
+  topologyTrees: [TopologyTree] @hasMany
 }
 
 type TemplateFeature @model {
@@ -584,17 +585,21 @@ type RawData @model {
   tree: Tree @belongsTo
 }
 
-# type Topology @model {
-#  id: ID!
-#  name: String!
-#  string_code: String
-#  number_code: String
-#  status: String
-#  polygon: AWSJSON
-#  topologyParent: Topology @belongsTo # Self-referencing
-#  topologies: [Topology] @hasMany
-#  topologyTrees: [TopologyTree] @hasMany
-#}
-#
-#
-#  trees: [Tree] @hasMany
+type Topology @model {
+  id: ID!
+  name: String!
+  string_code: String
+  number_code: String
+  status: String
+  polygon: AWSJSON
+  topologyParent: Topology @belongsTo # Self-referencing
+  topologies: [Topology] @hasMany
+  topologyTrees: [TopologyTree] @hasMany
+}
+
+type TopologyTree @model {
+  id: ID!
+  topology: Topology @belongsTo
+  tree: Tree @belongsTo
+}
+

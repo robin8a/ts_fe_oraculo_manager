@@ -18,6 +18,7 @@ import {
   DocumentDuplicateIcon,
   MicrophoneIcon,
   TableCellsIcon,
+  MapIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../hooks/useAuth';
 
@@ -72,6 +73,15 @@ const navigation: NavItem[] = [
     children: [
       { name: 'List', href: '/templatefeatures', icon: ListBulletIcon },
       { name: 'Create', href: '/templatefeatures/create', icon: PlusCircleIcon },
+    ],
+  },
+  {
+    name: 'Topology',
+    href: '/topologies',
+    icon: MapIcon,
+    children: [
+      { name: 'List', href: '/topologies', icon: ListBulletIcon },
+      { name: 'Create', href: '/topologies/create', icon: PlusCircleIcon },
     ],
   },
   {

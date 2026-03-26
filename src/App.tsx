@@ -28,6 +28,10 @@ import { TemplateList } from './pages/Template/TemplateList';
 import { TemplateCreate } from './pages/Template/TemplateCreate';
 import { TemplateDetail } from './pages/Template/TemplateDetail';
 import { TemplateEdit } from './pages/Template/TemplateEdit';
+import { TopologyList } from './pages/Topology/TopologyList';
+import { TopologyCreate } from './pages/Topology/TopologyCreate';
+import { TopologyDetail } from './pages/Topology/TopologyDetail';
+import { TopologyEdit } from './pages/Topology/TopologyEdit';
 import { useAuth } from './hooks/useAuth';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -113,6 +117,10 @@ function App() {
                   <Route path="/templates/create" element={<TemplateCreate />} />
                   <Route path="/templates/:id" element={<TemplateDetail />} />
                   <Route path="/templates/:id/edit" element={<TemplateEdit />} />
+                  <Route path="/topologies" element={<TopologyList />} />
+                  <Route path="/topologies/create" element={<TopologyCreate />} />
+                  <Route path="/topologies/:id" element={<TopologyDetail />} />
+                  <Route path="/topologies/:id/edit" element={<TopologyEdit />} />
                 </Routes>
               </Layout>
             </ProtectedRoute>
