@@ -1,7 +1,11 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { GeoJSON, MapContainer, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { PolygonFeature } from '../../types/topology';
+import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from './mapDefaults';
+import { MapViewController } from './MapViewController';
+import { MapLatLngInputs } from './MapLatLngInputs';
+import { Button } from '../ui/Button';
 
 const OSM_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
@@ -19,9 +23,16 @@ export const ANCESTOR_PALETTE = [
 
 const LEAF_COLOR = '#dc2626';
 
-function FitAllBounds({ features }: { features: PolygonFeature[] }) {
+function FitAllBounds({
+  features,
+  enabled,
+}: {
+  features: PolygonFeature[];
+  enabled: boolean;
+}) {
   const map = useMap();
   useEffect(() => {
+    if (!enabled) return;
     const b = L.latLngBounds([]);
     features.forEach((f) => {
       const layer = L.geoJSON(f as GeoJSON.GeoJSON);
@@ -31,7 +42,7 @@ function FitAllBounds({ features }: { features: PolygonFeature[] }) {
     if (b.isValid()) {
       map.fitBounds(b, { padding: [40, 40], maxZoom: 16 });
     }
-  }, [map, features]);
+  }, [map, features, enabled]);
   return null;
 }
 
@@ -51,6 +62,10 @@ export const TopologyPolygonViewer: React.FC<TopologyPolygonViewerProps> = ({
   const allFeatures = useMemo(() => {
     return [...ancestors.map((a) => a.feature), leaf];
   }, [ancestors, leaf]);
+
+  const [fitPolygons, setFitPolygons] = useState(true);
+  const [mapCenter, setMapCenter] = useState<[number, number]>(DEFAULT_MAP_CENTER);
+  const [mapZoom, setMapZoom] = useState(DEFAULT_MAP_ZOOM);
 
   return (
     <div className={className ?? ''}>
@@ -73,10 +88,32 @@ export const TopologyPolygonViewer: React.FC<TopologyPolygonViewerProps> = ({
           <span className="text-gray-900">This topology</span>
         </span>
       </div>
+      <MapLatLngInputs
+        className="mb-2"
+        onApply={(center, zoom) => {
+          setMapCenter(center);
+          setMapZoom(zoom);
+          setFitPolygons(false);
+        }}
+      />
+      <div className="flex justify-end mb-2">
+        <Button type="button" variant="outline" size="sm" onClick={() => setFitPolygons(true)}>
+          Fit to polygons
+        </Button>
+      </div>
       <div className="h-[420px] w-full rounded-lg border border-gray-200 overflow-hidden z-0">
-        <MapContainer center={[4.65, -74.05]} zoom={6} className="h-full w-full" scrollWheelZoom>
+        <MapContainer
+          center={mapCenter}
+          zoom={mapZoom}
+          className="h-full w-full"
+          scrollWheelZoom
+        >
           <TileLayer attribution={OSM_ATTRIBUTION} url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-          <FitAllBounds features={allFeatures} />
+          {fitPolygons ? (
+            <FitAllBounds features={allFeatures} enabled={fitPolygons} />
+          ) : (
+            <MapViewController center={mapCenter} zoom={mapZoom} />
+          )}
           {ancestors.map((a, i) => (
             <GeoJSON
               key={a.id}

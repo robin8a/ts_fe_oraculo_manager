@@ -1,8 +1,11 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { MapContainer, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet-draw';
 import type { PolygonFeature } from '../../types/topology';
+import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from './mapDefaults';
+import { MapViewController } from './MapViewController';
+import { MapLatLngInputs } from './MapLatLngInputs';
 
 const OSM_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
@@ -135,19 +138,30 @@ export const TopologyPolygonEditor: React.FC<TopologyPolygonEditorProps> = ({
   onChange,
   className,
 }) => {
+  const [mapCenter, setMapCenter] = useState<[number, number]>(DEFAULT_MAP_CENTER);
+  const [mapZoom, setMapZoom] = useState(DEFAULT_MAP_ZOOM);
+
   return (
     <div className={className ?? ''}>
       <p className="text-sm text-gray-600 mb-2">
         Use the polygon tool to draw an area. Drag vertices to edit, or remove the shape from the toolbar.
       </p>
+      <MapLatLngInputs
+        className="mb-3"
+        onApply={(center, zoom) => {
+          setMapCenter(center);
+          setMapZoom(zoom);
+        }}
+      />
       <div className="h-[420px] w-full rounded-lg border border-gray-200 overflow-hidden z-0">
         <MapContainer
-          center={[4.65, -74.05]}
-          zoom={6}
+          center={mapCenter}
+          zoom={mapZoom}
           className="h-full w-full"
           scrollWheelZoom
         >
           <TileLayer attribution={OSM_ATTRIBUTION} url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+          <MapViewController center={mapCenter} zoom={mapZoom} />
           <DrawToolbarBridge value={value} onChange={onChange} />
         </MapContainer>
       </div>
