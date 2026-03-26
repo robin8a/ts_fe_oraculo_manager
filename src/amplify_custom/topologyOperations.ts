@@ -47,6 +47,10 @@ export const listTopologies = /* GraphQL */ `
         number_code
         status
         polygon
+        project {
+          id
+          name
+        }
         topologyParent {
           id
           name

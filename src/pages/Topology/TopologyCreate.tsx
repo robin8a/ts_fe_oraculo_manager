@@ -178,7 +178,7 @@ export const TopologyCreate: React.FC = () => {
               label="String code"
               type="text"
               value={formData.string_code}
-              onChange={(e) => handleChange('string_code', e.target.value)}
+              onChange={(e) => handleChange('string_code', e.target.value.toUpperCase())}
             />
             <Input
               label="Number code"

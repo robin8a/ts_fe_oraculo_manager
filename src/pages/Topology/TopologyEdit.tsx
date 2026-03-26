@@ -44,7 +44,7 @@ export const TopologyEdit: React.FC = () => {
       setFormData({
         projectId: topology.projectTopologiesId ?? topology.project?.id ?? '',
         name: topology.name,
-        string_code: topology.string_code ?? '',
+        string_code: (topology.string_code ?? '').toUpperCase(),
         number_code: topology.number_code ?? '',
         status: topology.status ?? '',
         topologyTopologyParentId: topology.topologyTopologyParentId ?? topology.topologyParent?.id ?? '',
@@ -190,7 +190,7 @@ export const TopologyEdit: React.FC = () => {
               label="String code"
               type="text"
               value={formData.string_code}
-              onChange={(e) => handleChange('string_code', e.target.value)}
+              onChange={(e) => handleChange('string_code', e.target.value.toUpperCase())}
             />
             <Input
               label="Number code"

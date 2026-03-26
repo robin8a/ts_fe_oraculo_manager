@@ -62,6 +62,10 @@ export const TopologyList: React.FC = () => {
       render: (item: Topology) =>
         item.project?.id ? (
           <span className="text-gray-800">{item.project.name || item.project.id}</span>
+        ) : item.projectTopologiesId ? (
+          <span className="text-gray-600 text-xs font-mono" title="Project id (name not loaded)">
+            {item.projectTopologiesId}
+          </span>
         ) : (
           <span className="text-gray-400">—</span>
         ),
