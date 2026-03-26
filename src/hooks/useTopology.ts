@@ -12,11 +12,21 @@ import {
 /** Amplify @belongsTo FK for `topologyParent` on Topology (adjust if AppSync rejects). */
 const PARENT_FK_FIELD = 'topologyTopologyParentId';
 
+/** Same pattern as Tree → Project (`projectTreesId` on Tree): Project has `topologies: [Topology] @hasMany`. */
+const PROJECT_FK_FIELD = 'projectTopologiesId';
+
 function normalizeParent(parent: unknown): { id: string; name?: string | null; polygon?: unknown } | null {
   if (!parent || typeof parent !== 'object') return null;
   const p = parent as { id?: string; name?: string | null; polygon?: unknown };
   if (!p.id) return null;
   return { id: p.id, name: p.name, polygon: p.polygon };
+}
+
+function normalizeProject(project: unknown): Topology['project'] {
+  if (!project || typeof project !== 'object') return null;
+  const p = project as { id?: string; name?: string | null; status?: string | null };
+  if (!p.id) return null;
+  return { id: p.id, name: p.name, status: p.status };
 }
 
 function normalizeTopology(raw: unknown): Topology | null {
@@ -29,11 +39,20 @@ function normalizeTopology(raw: unknown): Topology | null {
     parent?.id ??
     null;
 
+  const proj = normalizeProject(item.project);
+  const projectId =
+    (item[PROJECT_FK_FIELD] as string | undefined) ??
+    (item.projectId as string | undefined) ??
+    proj?.id ??
+    null;
+
   const topologies = item.topologies as Topology['topologies'];
   const children = topologies?.items;
 
   return {
     ...(item as unknown as Topology),
+    project: proj ?? undefined,
+    projectTopologiesId: projectId,
     topologyParent: parent ?? undefined,
     topologyTopologyParentId: parentId,
     topologies: Array.isArray(children)
@@ -144,6 +163,7 @@ export async function getTopologyById(id: string): Promise<Topology | null> {
 export interface UseCreateTopologyResult {
   createTopology: (input: {
     name: string;
+    projectTopologiesId: string;
     string_code?: string | null;
     number_code?: string | null;
     status?: string | null;
@@ -161,6 +181,7 @@ export function useCreateTopology(): UseCreateTopologyResult {
   const createTopology = useCallback(
     async (input: {
       name: string;
+      projectTopologiesId: string;
       string_code?: string | null;
       number_code?: string | null;
       status?: string | null;
@@ -170,10 +191,11 @@ export function useCreateTopology(): UseCreateTopologyResult {
       try {
         setLoading(true);
         setError(null);
-        const { topologyTopologyParentId, polygon, ...rest } = input;
+        const { topologyTopologyParentId, polygon, projectTopologiesId, ...rest } = input;
         const apiInput: Record<string, unknown> = { ...rest };
         const poly = normalizePolygonInput(polygon);
         if (poly !== undefined) apiInput.polygon = poly;
+        apiInput[PROJECT_FK_FIELD] = projectTopologiesId;
         const parentId =
           topologyTopologyParentId && topologyTopologyParentId !== '' ? topologyTopologyParentId : null;
         if (parentId) apiInput[PARENT_FK_FIELD] = parentId;
@@ -203,6 +225,7 @@ export interface UseUpdateTopologyResult {
   updateTopology: (input: {
     id: string;
     name?: string;
+    projectTopologiesId?: string | null;
     string_code?: string | null;
     number_code?: string | null;
     status?: string | null;
@@ -221,6 +244,7 @@ export function useUpdateTopology(): UseUpdateTopologyResult {
     async (input: {
       id: string;
       name?: string;
+      projectTopologiesId?: string | null;
       string_code?: string | null;
       number_code?: string | null;
       status?: string | null;
@@ -230,7 +254,7 @@ export function useUpdateTopology(): UseUpdateTopologyResult {
       try {
         setLoading(true);
         setError(null);
-        const { id, topologyTopologyParentId, polygon, ...rest } = input;
+        const { id, topologyTopologyParentId, polygon, projectTopologiesId, ...rest } = input;
         const apiInput: Record<string, unknown> = { id, ...rest };
         if ('polygon' in input) {
           if (polygon === null || polygon === undefined) {
@@ -245,6 +269,11 @@ export function useUpdateTopology(): UseUpdateTopologyResult {
               ? null
               : topologyTopologyParentId;
           apiInput[PARENT_FK_FIELD] = parentId;
+        }
+        if ('projectTopologiesId' in input) {
+          const pid =
+            projectTopologiesId === '' || projectTopologiesId == null ? null : projectTopologiesId;
+          apiInput[PROJECT_FK_FIELD] = pid;
         }
 
         const response: unknown = await API.graphql({

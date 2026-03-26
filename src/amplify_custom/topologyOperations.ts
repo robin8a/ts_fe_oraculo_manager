@@ -11,6 +11,11 @@ export const getTopology = /* GraphQL */ `
       number_code
       status
       polygon
+      project {
+        id
+        name
+        status
+      }
       topologyParent {
         id
         name
@@ -66,6 +71,10 @@ export const createTopology = /* GraphQL */ `
       number_code
       status
       polygon
+      project {
+        id
+        name
+      }
       topologyParent {
         id
         name
@@ -88,6 +97,10 @@ export const updateTopology = /* GraphQL */ `
       number_code
       status
       polygon
+      project {
+        id
+        name
+      }
       topologyParent {
         id
         name

@@ -6,6 +6,12 @@ export interface TopologyParentRef {
   polygon?: unknown;
 }
 
+export interface TopologyProjectRef {
+  id: string;
+  name?: string | null;
+  status?: string | null;
+}
+
 export interface Topology {
   id: string;
   name: string;
@@ -13,10 +19,13 @@ export interface Topology {
   number_code?: string | null;
   status?: string | null;
   polygon?: unknown;
+  project?: TopologyProjectRef | null;
   topologyParent?: TopologyParentRef | null;
   topologies?: { items?: Array<{ id: string; name: string } | null> | null } | null;
   createdAt?: string;
   updatedAt?: string;
+  /** FK to Project (Amplify hasMany name on Project: `topologies`) */
+  projectTopologiesId?: string | null;
   /** Normalized parent id from API variants */
   topologyTopologyParentId?: string | null;
 }

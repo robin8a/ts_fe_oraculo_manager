@@ -127,6 +127,16 @@ export const TopologyDetail: React.FC = () => {
             <dd className="mt-1 text-sm text-gray-900 font-mono">{topology.id}</dd>
           </div>
           <div className="sm:col-span-2">
+            <dt className="text-sm font-medium text-gray-700">Project</dt>
+            <dd className="mt-1 text-sm text-gray-900">
+              {topology.project?.id ? (
+                <span>{topology.project.name || topology.project.id}</span>
+              ) : (
+                <span className="text-gray-500">—</span>
+              )}
+            </dd>
+          </div>
+          <div className="sm:col-span-2">
             <dt className="text-sm font-medium text-gray-700">Parent</dt>
             <dd className="mt-1 text-sm text-gray-900">
               {topology.topologyParent?.id ? (
@@ -197,7 +207,13 @@ export const TopologyDetail: React.FC = () => {
                 variant="outline"
                 size="sm"
                 className="mt-2"
-                onClick={() => navigate(`/topologies/create?parentId=${id}`)}
+                onClick={() =>
+                  navigate(
+                    `/topologies/create?parentId=${id}${
+                      topology.project?.id ? `&projectId=${topology.project.id}` : ''
+                    }`
+                  )
+                }
               >
                 <PlusIcon className="h-4 w-4 mr-1 inline" />
                 Add child

@@ -31,6 +31,7 @@ export const TopologyList: React.FC = () => {
     return topologies.filter(
       (item) =>
         item.name.toLowerCase().includes(term) ||
+        (item.project?.name && item.project.name.toLowerCase().includes(term)) ||
         (item.string_code && item.string_code.toLowerCase().includes(term)) ||
         (item.number_code && item.number_code.toLowerCase().includes(term)) ||
         (item.status && item.status.toLowerCase().includes(term))
@@ -54,6 +55,16 @@ export const TopologyList: React.FC = () => {
       render: (item: Topology) => (
         <div className="font-medium text-gray-900">{item.name}</div>
       ),
+    },
+    {
+      key: 'project',
+      header: 'Project',
+      render: (item: Topology) =>
+        item.project?.id ? (
+          <span className="text-gray-800">{item.project.name || item.project.id}</span>
+        ) : (
+          <span className="text-gray-400">—</span>
+        ),
     },
     {
       key: 'parent',
