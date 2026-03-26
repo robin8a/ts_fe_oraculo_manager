@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { useGetTopology, useListTopologies, useUpdateTopology } from '../../hooks/useTopology';
@@ -38,20 +38,28 @@ export const TopologyEdit: React.FC = () => {
   });
   const [polygon, setPolygon] = useState<PolygonFeature | null>(null);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  /** Avoid resetting the map/form when `topology` reference changes while the user is editing (e.g. refetch). */
+  const hydratedForRouteIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (topology) {
-      setFormData({
-        projectId: topology.projectTopologiesId ?? topology.project?.id ?? '',
-        name: topology.name,
-        string_code: (topology.string_code ?? '').toUpperCase(),
-        number_code: topology.number_code ?? '',
-        status: topology.status ?? '',
-        topologyTopologyParentId: topology.topologyTopologyParentId ?? topology.topologyParent?.id ?? '',
-      });
-      setPolygon(parsePolygonFeature(topology.polygon));
-    }
-  }, [topology]);
+    hydratedForRouteIdRef.current = null;
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    if (!topology || topology.id !== id) return;
+    if (hydratedForRouteIdRef.current === id) return;
+    hydratedForRouteIdRef.current = id;
+    setFormData({
+      projectId: topology.projectTopologiesId ?? topology.project?.id ?? '',
+      name: topology.name,
+      string_code: (topology.string_code ?? '').toUpperCase(),
+      number_code: topology.number_code ?? '',
+      status: topology.status ?? '',
+      topologyTopologyParentId: topology.topologyTopologyParentId ?? topology.topologyParent?.id ?? '',
+    });
+    setPolygon(parsePolygonFeature(topology.polygon));
+  }, [topology, id]);
 
   const parentOptions = useMemo(() => {
     const opts = [{ value: '', label: 'None (root)' }];

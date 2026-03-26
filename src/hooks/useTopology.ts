@@ -9,8 +9,11 @@ import {
   deleteTopology as deleteTopologyMutation,
 } from '../amplify_custom/topologyOperations';
 
-/** Amplify @belongsTo FK for `topologyParent` on Topology (adjust if AppSync rejects). */
-const PARENT_FK_FIELD = 'topologyTopologyParentId';
+/**
+ * Amplify FK for Topology → parent Topology: same pattern as Template (`templateTemplatesId`).
+ * Uses model name + hasMany field `topologies`, not the belongsTo field name `topologyParent`.
+ */
+const PARENT_FK_FIELD = 'topologyTopologiesId';
 
 /** Same pattern as Tree → Project (`projectTreesId` on Tree): Project has `topologies: [Topology] @hasMany`. */
 const PROJECT_FK_FIELD = 'projectTopologiesId';
@@ -35,6 +38,8 @@ function normalizeTopology(raw: unknown): Topology | null {
   const parent = normalizeParent(item.topologyParent);
   const parentId =
     (item[PARENT_FK_FIELD] as string | undefined) ??
+    /** Legacy / mistaken client name */
+    (item.topologyTopologyParentId as string | undefined) ??
     (item.topologyParentId as string | undefined) ??
     parent?.id ??
     null;
@@ -61,10 +66,28 @@ function normalizeTopology(raw: unknown): Topology | null {
   };
 }
 
-function normalizePolygonInput(polygon: unknown): string | undefined {
+/**
+ * AppSync `AWSJSON` must be a JSON *string* in GraphQL variables (not a nested object), or
+ * validation fails with "Variable 'polygon' has an invalid value."
+ * Clone via JSON so Leaflet/geo objects only carry plain data.
+ */
+function toTopologyPolygonAwsJson(polygon: unknown): string | undefined {
   if (polygon === undefined || polygon === null) return undefined;
-  if (typeof polygon === 'string') return polygon;
-  return JSON.stringify(polygon);
+  if (typeof polygon === 'string') {
+    const t = polygon.trim();
+    if (!t) return undefined;
+    try {
+      JSON.parse(t);
+      return t;
+    } catch {
+      return undefined;
+    }
+  }
+  try {
+    return JSON.stringify(JSON.parse(JSON.stringify(polygon)));
+  } catch {
+    return undefined;
+  }
 }
 
 export interface UseListTopologiesResult {
@@ -193,7 +216,7 @@ export function useCreateTopology(): UseCreateTopologyResult {
         setError(null);
         const { topologyTopologyParentId, polygon, projectTopologiesId, ...rest } = input;
         const apiInput: Record<string, unknown> = { ...rest };
-        const poly = normalizePolygonInput(polygon);
+        const poly = toTopologyPolygonAwsJson(polygon);
         if (poly !== undefined) apiInput.polygon = poly;
         apiInput[PROJECT_FK_FIELD] = projectTopologiesId;
         const parentId =
@@ -260,7 +283,10 @@ export function useUpdateTopology(): UseUpdateTopologyResult {
           if (polygon === null || polygon === undefined) {
             apiInput.polygon = null;
           } else {
-            apiInput.polygon = normalizePolygonInput(polygon);
+            const encoded = toTopologyPolygonAwsJson(polygon);
+            if (encoded !== undefined) {
+              apiInput.polygon = encoded;
+            }
           }
         }
         if ('topologyTopologyParentId' in input) {

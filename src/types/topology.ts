@@ -95,7 +95,7 @@ export function hasRenderablePolygon(raw: unknown): boolean {
   return parsePolygonFeature(raw) != null;
 }
 
-/** Serialize for GraphQL AWSJSON (string form accepted by AppSync). */
+/** Serialize for GraphQL AWSJSON (JSON string) or other APIs. */
 export function polygonFeatureToAwsJson(feature: PolygonFeature): string {
   return JSON.stringify(feature);
 }
