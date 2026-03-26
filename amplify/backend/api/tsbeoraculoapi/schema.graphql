@@ -529,6 +529,7 @@ type Project @model {
   name: String!
   status: String!
   trees: [Tree] @hasMany
+  topologies: [Topology] @hasMany
 }
 
 type Template @model {
@@ -592,6 +593,7 @@ type Topology @model {
   number_code: String
   status: String
   polygon: AWSJSON
+  project: Project @belongsTo
   topologyParent: Topology @belongsTo # Self-referencing
   topologies: [Topology] @hasMany
   topologyTrees: [TopologyTree] @hasMany
