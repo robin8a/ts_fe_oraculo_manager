@@ -64,7 +64,10 @@ function DrawToolbarBridge({
       position: 'topright',
       draw: {
         polygon: {
-          allowIntersection: false,
+          // Leaflet.draw rejects many valid 4th+ clicks when false: the new edge from the
+          // last vertex is tested against the first segment and often crosses it in screen
+          // space even for simple parcels. Allow drawing; avoid self-crossing shapes.
+          allowIntersection: true,
           showArea: true,
         },
         polyline: false,
@@ -189,7 +192,8 @@ export const TopologyPolygonEditor: React.FC<TopologyPolygonEditorProps> = ({
   return (
     <div className={className ?? ''}>
       <p className="text-sm text-gray-600 mb-2">
-        Use the polygon tool to draw an area. Drag vertices to edit, or remove the shape from the toolbar.
+        Use the polygon tool to draw an area (any number of corners). Close by clicking the first point or
+        double‑clicking the last. Drag vertices to edit, or remove the shape from the toolbar.
         {parentPreviewFeature && (
           <span className="block mt-1 text-gray-500">
             Blue dashed outline: parent topology area (reference only).
