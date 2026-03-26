@@ -62,6 +62,18 @@ export const TopologyEdit: React.FC = () => {
     return opts;
   }, [topologies, id, formData.projectId]);
 
+  const parentPolygonPreview = useMemo(() => {
+    const pid = formData.topologyTopologyParentId;
+    if (!pid) return null;
+    const row = topologies.find((t) => t.id === pid);
+    const fromList = row ? parsePolygonFeature(row.polygon) : null;
+    if (fromList) return fromList;
+    if (topology?.topologyParent?.id === pid) {
+      return parsePolygonFeature(topology.topologyParent.polygon);
+    }
+    return null;
+  }, [formData.topologyTopologyParentId, topologies, topology]);
+
   const validate = () => {
     const errors: Record<string, string> = {};
     if (!formData.projectId.trim()) {
@@ -208,7 +220,11 @@ export const TopologyEdit: React.FC = () => {
               />
             </div>
             <div className="md:col-span-2">
-              <TopologyPolygonEditor value={polygon} onChange={setPolygon} />
+              <TopologyPolygonEditor
+                value={polygon}
+                onChange={setPolygon}
+                parentPreviewFeature={parentPolygonPreview}
+              />
             </div>
           </div>
 

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { MapContainer, TileLayer, useMap } from 'react-leaflet';
+import { GeoJSON, MapContainer, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet-draw';
 import type { PolygonFeature } from '../../types/topology';
@@ -127,15 +127,60 @@ function DrawToolbarBridge({
   return null;
 }
 
+/** When the selected parent changes, fit the map to parent + current draft polygon (if any). */
+function FitWhenParentSelectionChanges({
+  parentFeature,
+  userFeature,
+}: {
+  parentFeature: PolygonFeature | null;
+  userFeature: PolygonFeature | null;
+}) {
+  const map = useMap();
+  const lastParentKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const parentKey = parentFeature ? JSON.stringify(parentFeature) : '';
+    if (parentKey === lastParentKeyRef.current) return;
+    lastParentKeyRef.current = parentKey;
+
+    const b = L.latLngBounds([]);
+    if (parentFeature) {
+      const pb = L.geoJSON(parentFeature as GeoJSON.GeoJSON).getBounds();
+      if (pb.isValid()) b.extend(pb);
+    }
+    if (userFeature) {
+      const ub = L.geoJSON(userFeature as GeoJSON.GeoJSON).getBounds();
+      if (ub.isValid()) b.extend(ub);
+    }
+    if (b.isValid()) {
+      map.fitBounds(b, { padding: [28, 28], maxZoom: 16 });
+    }
+  }, [map, parentFeature, userFeature]);
+
+  return null;
+}
+
+const PARENT_PREVIEW_STYLE = {
+  color: '#2563eb',
+  weight: 2,
+  opacity: 0.9,
+  fillColor: '#2563eb',
+  fillOpacity: 0.12,
+  dashArray: '8 6' as const,
+};
+
 export interface TopologyPolygonEditorProps {
   value: PolygonFeature | null;
   onChange: (next: PolygonFeature | null) => void;
+  /** Selected parent topology polygon (read-only preview). */
+  parentPreviewFeature?: PolygonFeature | null;
   className?: string;
 }
 
 export const TopologyPolygonEditor: React.FC<TopologyPolygonEditorProps> = ({
   value,
   onChange,
+  parentPreviewFeature = null,
   className,
 }) => {
   const [mapCenter, setMapCenter] = useState<[number, number]>(DEFAULT_MAP_CENTER);
@@ -145,6 +190,11 @@ export const TopologyPolygonEditor: React.FC<TopologyPolygonEditorProps> = ({
     <div className={className ?? ''}>
       <p className="text-sm text-gray-600 mb-2">
         Use the polygon tool to draw an area. Drag vertices to edit, or remove the shape from the toolbar.
+        {parentPreviewFeature && (
+          <span className="block mt-1 text-gray-500">
+            Blue dashed outline: parent topology area (reference only).
+          </span>
+        )}
       </p>
       <MapLatLngInputs
         className="mb-3"
@@ -162,6 +212,14 @@ export const TopologyPolygonEditor: React.FC<TopologyPolygonEditorProps> = ({
         >
           <TileLayer attribution={OSM_ATTRIBUTION} url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
           <MapViewController center={mapCenter} zoom={mapZoom} />
+          {parentPreviewFeature && (
+            <GeoJSON
+              key={JSON.stringify(parentPreviewFeature)}
+              data={parentPreviewFeature as GeoJSON.GeoJSON}
+              style={PARENT_PREVIEW_STYLE}
+            />
+          )}
+          <FitWhenParentSelectionChanges parentFeature={parentPreviewFeature} userFeature={value} />
           <DrawToolbarBridge value={value} onChange={onChange} />
         </MapContainer>
       </div>

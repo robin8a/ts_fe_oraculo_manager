@@ -7,7 +7,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { TopologyPolygonEditor } from '../../components/Topology/TopologyPolygonEditor';
-import type { PolygonFeature } from '../../types/topology';
+import { parsePolygonFeature, type PolygonFeature } from '../../types/topology';
 
 export const TopologyCreate: React.FC = () => {
   const navigate = useNavigate();
@@ -71,6 +71,13 @@ export const TopologyCreate: React.FC = () => {
       .forEach((t) => opts.push({ value: t.id, label: t.name }));
     return opts;
   }, [topologies, formData.projectId]);
+
+  const parentPolygonPreview = useMemo(() => {
+    const pid = formData.topologyTopologyParentId;
+    if (!pid) return null;
+    const row = topologies.find((t) => t.id === pid);
+    return row ? parsePolygonFeature(row.polygon) : null;
+  }, [formData.topologyTopologyParentId, topologies]);
 
   const validate = () => {
     const errors: Record<string, string> = {};
@@ -196,7 +203,11 @@ export const TopologyCreate: React.FC = () => {
               />
             </div>
             <div className="md:col-span-2">
-              <TopologyPolygonEditor value={polygon} onChange={setPolygon} />
+              <TopologyPolygonEditor
+                value={polygon}
+                onChange={setPolygon}
+                parentPreviewFeature={parentPolygonPreview}
+              />
             </div>
           </div>
 
