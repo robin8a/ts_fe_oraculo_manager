@@ -99,11 +99,17 @@ function DrawToolbarBridge({
     map.on(L.Draw.Event.CREATED, onCreated as L.LeafletEventHandlerFn);
     map.on(L.Draw.Event.EDITED, onEditedOrDeleted);
     map.on(L.Draw.Event.DELETED, onEditedOrDeleted);
+    // draw:edited only fires when the user clicks Save on the edit toolbar; vertex drags emit
+    // draw:editvertex / draw:editmove — without these, React state stays on the previous GeoJSON.
+    map.on(L.Draw.Event.EDITVERTEX, onEditedOrDeleted as L.LeafletEventHandlerFn);
+    map.on(L.Draw.Event.EDITMOVE, onEditedOrDeleted as L.LeafletEventHandlerFn);
 
     return () => {
       map.off(L.Draw.Event.CREATED, onCreated as L.LeafletEventHandlerFn);
       map.off(L.Draw.Event.EDITED, onEditedOrDeleted);
       map.off(L.Draw.Event.DELETED, onEditedOrDeleted);
+      map.off(L.Draw.Event.EDITVERTEX, onEditedOrDeleted as L.LeafletEventHandlerFn);
+      map.off(L.Draw.Event.EDITMOVE, onEditedOrDeleted as L.LeafletEventHandlerFn);
       if (drawControlRef.current) {
         map.removeControl(drawControlRef.current);
         drawControlRef.current = null;
