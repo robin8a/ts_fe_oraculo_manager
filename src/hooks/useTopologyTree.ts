@@ -31,6 +31,8 @@ async function listAllTopologyTrees(filter: unknown): Promise<TopologyTreeItem[]
   do {
     const resp: any = await API.graphql({
       query: listTopologyTreesQuery,
+      // Ensure we can read/write even when the app is signed-in with a different default auth mode.
+      authMode: 'API_KEY',
       variables: { filter, limit: 500, nextToken: nextToken || undefined },
     });
     const page = resp?.data?.listTopologyTrees?.items ?? [];
@@ -134,6 +136,7 @@ export function useCreateTopologyTree(): UseCreateTopologyTreeResult {
  
       const resp: any = await API.graphql({
         query: createTopologyTreeMutation,
+        authMode: 'API_KEY',
         variables: { input: apiInput },
       });
       const raw = resp?.data?.createTopologyTree;
