@@ -106,6 +106,12 @@ export const TreesHierarchy: React.FC = () => {
     setTopologySearch('');
   }, [selectedProjectId]);
 
+  // Auto-load trees for the selected project (relations auto-refresh when treeIds change).
+  useEffect(() => {
+    if (!selectedProjectId) return;
+    refetchTrees();
+  }, [selectedProjectId, refetchTrees]);
+
   const projectTopologies = useMemo(() => {
     if (!selectedProjectId) return [];
     return topologies.filter((t) => t.projectTopologiesId === selectedProjectId);
