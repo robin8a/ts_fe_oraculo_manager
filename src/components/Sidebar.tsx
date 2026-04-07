@@ -82,6 +82,7 @@ const navigation: NavItem[] = [
     children: [
       { name: 'List', href: '/topologies', icon: ListBulletIcon },
       { name: 'Create', href: '/topologies/create', icon: PlusCircleIcon },
+      { name: 'Assign Tree Topology', href: '/topologies/assign-tree-topology', icon: LinkIcon },
     ],
   },
   {
