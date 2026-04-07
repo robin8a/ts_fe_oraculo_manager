@@ -33,6 +33,7 @@ import { TopologyCreate } from './pages/Topology/TopologyCreate';
 import { TopologyDetail } from './pages/Topology/TopologyDetail';
 import { TopologyEdit } from './pages/Topology/TopologyEdit';
 import { AssignTreeTopology } from './pages/Topology/AssignTreeTopology';
+import { TreesHierarchy } from './pages/Topology/TreesHierarchy';
 import { useAuth } from './hooks/useAuth';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -121,6 +122,7 @@ function App() {
                   <Route path="/topologies" element={<TopologyList />} />
                   <Route path="/topologies/create" element={<TopologyCreate />} />
                   <Route path="/topologies/assign-tree-topology" element={<AssignTreeTopology />} />
+                  <Route path="/topologies/trees-hierarchy" element={<TreesHierarchy />} />
                   <Route path="/topologies/:id" element={<TopologyDetail />} />
                   <Route path="/topologies/:id/edit" element={<TopologyEdit />} />
                 </Routes>

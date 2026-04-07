@@ -75,3 +75,9 @@ Help to create a new UI component and add to the sidebar, where allow:
 - Add pagination to the table
 - Add a button to export the table to a CSV file
 
+## Topology - "Tree Hierarchy"
+
+Help to create a new Ux/Ui component under "Topology" left menu and named "Trees Hierarchy" with the following features:
+
+1. Allow drill-down from root parent "Topology"
+2. Show the under the selected leaf the contains Tree "Topology" drille-down

@@ -69,6 +69,14 @@ export const AssignTreeTopology: React.FC = () => {
  
   const { createTopologyTree, loading: creating, error: createError } = useCreateTopologyTree();
  
+  const [assignProgress, setAssignProgress] = useState<{
+    totalToCreate: number;
+    processed: number;
+    created: number;
+    skipped: number;
+    failed: number;
+  } | null>(null);
+ 
   const [assignResult, setAssignResult] = useState<{
     created: number;
     skipped: number;
@@ -150,6 +158,7 @@ export const AssignTreeTopology: React.FC = () => {
     setSelectedTopologyIds({});
     setTopologySearch('');
     setAssignResult(null);
+    setAssignProgress(null);
     setFilterColumnKey('');
     setFilterValue('');
   }, [selectedProjectId]);
@@ -197,6 +206,7 @@ export const AssignTreeTopology: React.FC = () => {
  
   const handleAssign = useCallback(async () => {
     setAssignResult(null);
+    setAssignProgress(null);
     const treeIdsToAssign = selectedTreeIdList;
     const topologyIdsToAssign = selectedTopologyIdList;
  
@@ -221,6 +231,14 @@ export const AssignTreeTopology: React.FC = () => {
       }
     }
  
+    setAssignProgress({
+      totalToCreate: pairs.length,
+      processed: 0,
+      created: 0,
+      skipped,
+      failed: 0,
+    });
+ 
     // Batch to avoid too many simultaneous requests.
     for (const batch of chunk(pairs, 10)) {
       const results = await Promise.allSettled(
@@ -230,8 +248,18 @@ export const AssignTreeTopology: React.FC = () => {
         if (r.status === 'fulfilled' && r.value?.id) createdCount += 1;
         else failed += 1;
       }
+      setAssignProgress((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          processed: Math.min(prev.totalToCreate, prev.processed + batch.length),
+          created: createdCount,
+          failed,
+        };
+      });
     }
  
+    setAssignProgress(null);
     setAssignResult({ created: createdCount, skipped, failed });
     await refetchRelations();
   }, [selectedTreeIdList, selectedTopologyIdList, topologyTreeIdByPairKey, createTopologyTree, refetchRelations]);
@@ -281,6 +309,11 @@ export const AssignTreeTopology: React.FC = () => {
  
   const anyTreeSelected = selectedTreeIdList.length > 0;
   const anyTopologySelected = selectedTopologyIdList.length > 0;
+  const progressPct = useMemo(() => {
+    if (!assignProgress) return 0;
+    if (assignProgress.totalToCreate <= 0) return 100;
+    return Math.round((assignProgress.processed / assignProgress.totalToCreate) * 100);
+  }, [assignProgress]);
  
   return (
     <div className="space-y-6">
@@ -436,6 +469,23 @@ export const AssignTreeTopology: React.FC = () => {
               <strong>{assignResult.skipped}</strong> • Failed: <strong>{assignResult.failed}</strong>
             </>
           )}
+        </div>
+      )}
+ 
+      {assignProgress && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+          <div className="flex items-center justify-between gap-3">
+            <div className="font-medium">
+              Assigning… {assignProgress.processed}/{assignProgress.totalToCreate} ({progressPct}%)
+            </div>
+            <div className="text-xs text-blue-900/80">
+              Created: <strong>{assignProgress.created}</strong> • Skipped: <strong>{assignProgress.skipped}</strong> • Failed:{' '}
+              <strong>{assignProgress.failed}</strong>
+            </div>
+          </div>
+          <div className="mt-2 h-2 w-full overflow-hidden rounded bg-blue-100">
+            <div className="h-full bg-blue-600" style={{ width: `${progressPct}%` }} />
+          </div>
         </div>
       )}
  
