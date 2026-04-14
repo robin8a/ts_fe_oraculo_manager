@@ -87,6 +87,15 @@ const navigation: NavItem[] = [
     ],
   },
   {
+    name: 'Projects (CRUD)',
+    href: '/projects-admin',
+    icon: FolderIcon,
+    children: [
+      { name: 'List', href: '/projects-admin', icon: ListBulletIcon },
+      { name: 'Create', href: '/projects-admin/create', icon: PlusCircleIcon },
+    ],
+  },
+  {
     name: 'Projects & Trees',
     href: '/projects',
     icon: FolderIcon,

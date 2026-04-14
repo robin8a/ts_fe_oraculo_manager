@@ -184,3 +184,9 @@ On tag `vX.Y.Z`:
 - Add CI checks: lint, typecheck, test, build
 - Adopt Conventional Commits + squash merge PRs
 - Add automated versioning + changelog (e.g., Release Please / semantic-release)
+
+
+## Help to create a new Ux/UI (Project)
+
+- For entity "Project"
+- Allow CRUDL

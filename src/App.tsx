@@ -34,6 +34,10 @@ import { TopologyDetail } from './pages/Topology/TopologyDetail';
 import { TopologyEdit } from './pages/Topology/TopologyEdit';
 import { AssignTreeTopology } from './pages/Topology/AssignTreeTopology';
 import { TreesHierarchy } from './pages/Topology/TreesHierarchy';
+import { ProjectList } from './pages/Project/ProjectList';
+import { ProjectCreate } from './pages/Project/ProjectCreate';
+import { ProjectDetail } from './pages/Project/ProjectDetail';
+import { ProjectEdit } from './pages/Project/ProjectEdit';
 import { useAuth } from './hooks/useAuth';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -111,6 +115,10 @@ function App() {
                   <Route path="/projects/delete" element={<DeleteProjectTreeFeature />} />
                   <Route path="/projects/duplicates" element={<DuplicateFeaturesView />} />
                   <Route path="/projects/pivot" element={<PivotTableView />} />
+                  <Route path="/projects-admin" element={<ProjectList />} />
+                  <Route path="/projects-admin/create" element={<ProjectCreate />} />
+                  <Route path="/projects-admin/:id" element={<ProjectDetail />} />
+                  <Route path="/projects-admin/:id/edit" element={<ProjectEdit />} />
                   <Route path="/templatefeatures" element={<TemplateFeatureList />} />
                   <Route path="/templatefeatures/create" element={<TemplateFeatureCreate />} />
                   <Route path="/templatefeatures/:id" element={<TemplateFeatureDetail />} />
