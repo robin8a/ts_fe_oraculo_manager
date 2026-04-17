@@ -2,19 +2,40 @@
 # all models in this schema. Learn more about authorization rules here: https://docs.amplify.aws/cli/graphql/authorization-rules
 input AMPLIFY { globalAuthRule: AuthRule = { allow: public } } # FOR TESTING ONLY!
 
-type ModelAI @model {
+type SatelliteTopology @model {
   id: ID!
+  type: String! # SATELLITE, BAND
   name: String!
   description: String!
-  document_link: String!
-  api_link: String!
+
+  satelliteTopologyParent: SatelliteTopology @belongsTo # Self-referencing
+  satelliteTopologies: [SatelliteTopology] @hasMany
+
+  satelliteTopologyModelAIs: [SatelliteTopologyModelAI] @hasMany
+}
+
+type ModelAI @model {
+  id: ID!
+  group: String
+  name: String!
+  description: String!
   version: String!
+  document_link: String!
+  is_latest: Boolean!
+  api_link: String!
   is_approved: Boolean!
   tokens_cost: Int!
   cost_tokens: Int!
   modelAIParent: ModelAI @belongsTo # Self-referencing
   modelAIs: [ModelAI] @hasMany
   calculations: [Calculation] @hasMany
+  satelliteTopologyModelAIs: [SatelliteTopologyModelAI] @hasMany
+}
+
+type SatelliteTopologyModelAI @model {
+  id: ID!
+  satelliteTopology: SatelliteTopology @belongsTo
+  modelAI: ModelAI @belongsTo
 }
 
 type Calculation @model {
