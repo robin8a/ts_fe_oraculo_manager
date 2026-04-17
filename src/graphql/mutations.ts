@@ -14,6 +14,7 @@ export const createModelAI = /* GraphQL */ `mutation CreateModelAI(
 ) {
   createModelAI(input: $input, condition: $condition) {
     id
+    group
     name
     description
     document_link
@@ -41,6 +42,7 @@ export const updateModelAI = /* GraphQL */ `mutation UpdateModelAI(
 ) {
   updateModelAI(input: $input, condition: $condition) {
     id
+    group
     name
     description
     document_link
@@ -68,6 +70,7 @@ export const deleteModelAI = /* GraphQL */ `mutation DeleteModelAI(
 ) {
   deleteModelAI(input: $input, condition: $condition) {
     id
+    group
     name
     description
     document_link
@@ -104,6 +107,7 @@ export const createCalculation = /* GraphQL */ `mutation CreateCalculation(
     is_to_block_chain
     modelAI {
       id
+      group
       name
       description
       document_link
@@ -148,6 +152,7 @@ export const updateCalculation = /* GraphQL */ `mutation UpdateCalculation(
     is_to_block_chain
     modelAI {
       id
+      group
       name
       description
       document_link
@@ -192,6 +197,7 @@ export const deleteCalculation = /* GraphQL */ `mutation DeleteCalculation(
     is_to_block_chain
     modelAI {
       id
+      group
       name
       description
       document_link

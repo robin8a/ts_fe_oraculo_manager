@@ -31,7 +31,8 @@ export const ModelAIList: React.FC = () => {
       (item) =>
         item.name.toLowerCase().includes(term) ||
         item.description.toLowerCase().includes(term) ||
-        item.version.toLowerCase().includes(term)
+        item.version.toLowerCase().includes(term) ||
+        (item.group?.toLowerCase().includes(term) ?? false)
     );
   }, [modelAIs, searchTerm]);
 
@@ -51,6 +52,26 @@ export const ModelAIList: React.FC = () => {
       header: 'Name',
       render: (item: ModelAI) => (
         <div className="font-medium text-gray-900">{item.name}</div>
+      ),
+    },
+    {
+      key: 'group',
+      header: 'Group',
+      render: (item: ModelAI) => (
+        <span className="text-gray-600">{item.group?.trim() || '—'}</span>
+      ),
+    },
+    {
+      key: 'is_latest',
+      header: 'Latest',
+      render: (item: ModelAI) => (
+        <span
+          className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+            item.is_latest ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-700'
+          }`}
+        >
+          {item.is_latest ? 'Yes' : 'No'}
+        </span>
       ),
     },
     {
@@ -197,7 +218,7 @@ export const ModelAIList: React.FC = () => {
             <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
             <Input
               type="text"
-              placeholder="Search by name, description, or version..."
+              placeholder="Search by name, group, description, or version..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10"

@@ -21,11 +21,13 @@ export const ModelAICreate: React.FC = () => {
   }, [modelAIs]);
 
   const [formData, setFormData] = useState({
+    group: '',
     name: '',
     description: '',
     document_link: '',
     api_link: '',
     version: '',
+    is_latest: true,
     is_approved: false,
     tokens_cost: 0,
     cost_tokens: 0,
@@ -76,7 +78,10 @@ export const ModelAICreate: React.FC = () => {
       return;
     }
 
-    const result = await createModelAI(formData);
+    const result = await createModelAI({
+      ...formData,
+      group: formData.group.trim() || undefined,
+    });
     if (result) {
       navigate('/modelai');
     }
@@ -124,6 +129,16 @@ export const ModelAICreate: React.FC = () => {
                 onChange={(e) => handleChange('name', e.target.value)}
                 error={formErrors.name}
                 required
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <Input
+                label="Group"
+                type="text"
+                value={formData.group}
+                onChange={(e) => handleChange('group', e.target.value)}
+                placeholder="Optional grouping label"
               />
             </div>
 
@@ -181,6 +196,19 @@ export const ModelAICreate: React.FC = () => {
               placeholder="1.0.0"
               required
             />
+
+            <div className="flex items-center pt-8">
+              <input
+                type="checkbox"
+                id="is_latest"
+                checked={formData.is_latest}
+                onChange={(e) => handleChange('is_latest', e.target.checked)}
+                className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+              />
+              <label htmlFor="is_latest" className="ml-2 block text-sm text-gray-900">
+                Latest version
+              </label>
+            </div>
 
             <div className="flex items-center pt-8">
               <input

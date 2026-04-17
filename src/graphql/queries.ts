@@ -11,6 +11,7 @@ type GeneratedQuery<InputType, OutputType> = string & {
 export const getModelAI = /* GraphQL */ `query GetModelAI($id: ID!) {
   getModelAI(id: $id) {
     id
+    group
     name
     description
     document_link
@@ -40,6 +41,7 @@ export const listModelAIS = /* GraphQL */ `query ListModelAIS(
   listModelAIS(filter: $filter, limit: $limit, nextToken: $nextToken) {
     items {
       id
+      group
       name
       description
       document_link
@@ -72,6 +74,7 @@ export const getCalculation = /* GraphQL */ `query GetCalculation($id: ID!) {
     is_to_block_chain
     modelAI {
       id
+      group
       name
       description
       document_link

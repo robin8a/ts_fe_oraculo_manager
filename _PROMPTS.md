@@ -190,3 +190,7 @@ On tag `vX.Y.Z`:
 
 - For entity "Project"
 - Allow CRUDL
+
+## Satellite Topology
+
+Help to create a new Ux/UI for the new entity "SatelliteTopology" allow me CRUDL

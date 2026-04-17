@@ -14,18 +14,26 @@ function normalizeParent(parent: any): { id: string; name: string } | null {
   return null;
 }
 
+/** Legacy rows may lack `is_latest` in DynamoDB; we omit it from queries to avoid AppSync non-null errors. */
+function normalizeIsLatest(value: unknown): boolean {
+  return value === true;
+}
+
 function normalizeModelAIItems(raw: any[]): ModelAI[] {
-  return raw.map((item: any) => {
-    const modelAIs = item.modelAIs?.items ?? item.modelAIs;
-    const parent = normalizeParent(item.modelAIParent);
-    const parentId = item.modelAIParentId ?? item.modelAIModelAIParentId ?? parent?.id;
-    return {
-      ...item,
-      modelAIParent: parent ?? undefined,
-      modelAIModelAIParentId: parentId,
-      modelAIs: Array.isArray(modelAIs) ? modelAIs.map((c: any) => ({ id: c.id, name: c.name })) : undefined,
-    };
-  });
+  return raw
+    .filter((item) => item != null)
+    .map((item: any) => {
+      const modelAIs = item.modelAIs?.items ?? item.modelAIs;
+      const parent = normalizeParent(item.modelAIParent);
+      const parentId = item.modelAIParentId ?? item.modelAIModelAIParentId ?? parent?.id;
+      return {
+        ...item,
+        is_latest: normalizeIsLatest(item.is_latest),
+        modelAIParent: parent ?? undefined,
+        modelAIModelAIParentId: parentId,
+        modelAIs: Array.isArray(modelAIs) ? modelAIs.map((c: any) => ({ id: c.id, name: c.name })) : undefined,
+      };
+    });
 }
 
 function normalizeModelAI(item: any): ModelAI | null {
@@ -35,6 +43,7 @@ function normalizeModelAI(item: any): ModelAI | null {
   const parentId = item.modelAIParentId ?? item.modelAIModelAIParentId ?? parent?.id;
   return {
     ...item,
+    is_latest: normalizeIsLatest(item.is_latest),
     modelAIParent: parent ?? undefined,
     modelAIModelAIParentId: parentId,
     modelAIs: Array.isArray(modelAIs) ? modelAIs.map((c: any) => ({ id: c.id, name: c.name })) : undefined,
@@ -151,7 +160,11 @@ export function useCreateModelAI(): UseCreateModelAIResult {
         query: createModelAIMutation,
         variables: { input: apiInput }
       });
-      return normalizeModelAI(response.data?.createModelAI) ?? null;
+      const created = normalizeModelAI(response.data?.createModelAI) ?? null;
+      if (created && typeof input.is_latest === 'boolean') {
+        return { ...created, is_latest: input.is_latest };
+      }
+      return created;
     } catch (err: any) {
       setError(err.message || 'Failed to create ModelAI');
       console.error('Error creating ModelAI:', err);
@@ -188,7 +201,11 @@ export function useUpdateModelAI(): UseUpdateModelAIResult {
         query: updateModelAIMutation,
         variables: { input: apiInput }
       });
-      return normalizeModelAI(response.data?.updateModelAI) ?? null;
+      const updated = normalizeModelAI(response.data?.updateModelAI) ?? null;
+      if (updated && typeof input.is_latest === 'boolean') {
+        return { ...updated, is_latest: input.is_latest };
+      }
+      return updated;
     } catch (err: any) {
       setError(err.message || 'Failed to update ModelAI');
       console.error('Error updating ModelAI:', err);

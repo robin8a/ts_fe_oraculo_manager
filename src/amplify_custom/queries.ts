@@ -6,6 +6,7 @@
 export const getModelAI = `query GetModelAI($id: ID!) {
   getModelAI(id: $id) {
     id
+    group
     name
     description
     document_link
@@ -30,6 +31,7 @@ export const listModelAIS = `query ListModelAIS(
   listModelAIS(filter: $filter, limit: $limit, nextToken: $nextToken) {
     items {
       id
+      group
       name
       description
       document_link

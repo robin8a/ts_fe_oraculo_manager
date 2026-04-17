@@ -11,6 +11,7 @@ type GeneratedSubscription<InputType, OutputType> = string & {
 export const onCreateModelAI = /* GraphQL */ `subscription OnCreateModelAI($filter: ModelSubscriptionModelAIFilterInput) {
   onCreateModelAI(filter: $filter) {
     id
+    group
     name
     description
     document_link
@@ -35,6 +36,7 @@ export const onCreateModelAI = /* GraphQL */ `subscription OnCreateModelAI($filt
 export const onUpdateModelAI = /* GraphQL */ `subscription OnUpdateModelAI($filter: ModelSubscriptionModelAIFilterInput) {
   onUpdateModelAI(filter: $filter) {
     id
+    group
     name
     description
     document_link
@@ -59,6 +61,7 @@ export const onUpdateModelAI = /* GraphQL */ `subscription OnUpdateModelAI($filt
 export const onDeleteModelAI = /* GraphQL */ `subscription OnDeleteModelAI($filter: ModelSubscriptionModelAIFilterInput) {
   onDeleteModelAI(filter: $filter) {
     id
+    group
     name
     description
     document_link
@@ -94,6 +97,7 @@ export const onCreateCalculation = /* GraphQL */ `subscription OnCreateCalculati
     is_to_block_chain
     modelAI {
       id
+      group
       name
       description
       document_link
@@ -137,6 +141,7 @@ export const onUpdateCalculation = /* GraphQL */ `subscription OnUpdateCalculati
     is_to_block_chain
     modelAI {
       id
+      group
       name
       description
       document_link
@@ -180,6 +185,7 @@ export const onDeleteCalculation = /* GraphQL */ `subscription OnDeleteCalculati
     is_to_block_chain
     modelAI {
       id
+      group
       name
       description
       document_link

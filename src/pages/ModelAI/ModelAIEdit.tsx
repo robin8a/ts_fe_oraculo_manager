@@ -23,11 +23,13 @@ export const ModelAIEdit: React.FC = () => {
   }, [modelAIs, id]);
 
   const [formData, setFormData] = useState({
+    group: '',
     name: '',
     description: '',
     document_link: '',
     api_link: '',
     version: '',
+    is_latest: true,
     is_approved: false,
     tokens_cost: 0,
     cost_tokens: 0,
@@ -39,11 +41,13 @@ export const ModelAIEdit: React.FC = () => {
   useEffect(() => {
     if (modelAI) {
       setFormData({
+        group: modelAI.group ?? '',
         name: modelAI.name,
         description: modelAI.description,
         document_link: modelAI.document_link,
         api_link: modelAI.api_link,
         version: modelAI.version,
+        is_latest: modelAI.is_latest,
         is_approved: modelAI.is_approved,
         tokens_cost: modelAI.tokens_cost,
         cost_tokens: modelAI.cost_tokens,
@@ -91,6 +95,7 @@ export const ModelAIEdit: React.FC = () => {
     const result = await updateModelAI({
       id,
       ...formData,
+      group: formData.group.trim() || undefined,
       modelAIModelAIParentId: formData.modelAIModelAIParentId || undefined,
     });
 
@@ -166,6 +171,16 @@ export const ModelAIEdit: React.FC = () => {
             </div>
 
             <div className="md:col-span-2">
+              <Input
+                label="Group"
+                type="text"
+                value={formData.group}
+                onChange={(e) => handleChange('group', e.target.value)}
+                placeholder="Optional grouping label"
+              />
+            </div>
+
+            <div className="md:col-span-2">
               <Select
                 label="Parent"
                 options={parentOptions}
@@ -219,6 +234,19 @@ export const ModelAIEdit: React.FC = () => {
               placeholder="1.0.0"
               required
             />
+
+            <div className="flex items-center pt-8">
+              <input
+                type="checkbox"
+                id="is_latest"
+                checked={formData.is_latest}
+                onChange={(e) => handleChange('is_latest', e.target.checked)}
+                className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+              />
+              <label htmlFor="is_latest" className="ml-2 block text-sm text-gray-900">
+                Latest version
+              </label>
+            </div>
 
             <div className="flex items-center pt-8">
               <input

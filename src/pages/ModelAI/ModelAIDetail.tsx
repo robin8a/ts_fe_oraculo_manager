@@ -100,6 +100,28 @@ export const ModelAIDetail: React.FC = () => {
             <dd className="mt-1 text-sm text-gray-900 font-mono">{modelAI.id}</dd>
           </div>
 
+          <div>
+            <dt className="text-sm font-medium text-gray-500">Group</dt>
+            <dd className="mt-1 text-sm text-gray-900">
+              {modelAI.group?.trim() ? modelAI.group : '—'}
+            </dd>
+          </div>
+
+          <div>
+            <dt className="text-sm font-medium text-gray-500">Latest</dt>
+            <dd className="mt-1">
+              <span
+                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                  modelAI.is_latest
+                    ? 'bg-blue-100 text-blue-800'
+                    : 'bg-gray-100 text-gray-700'
+                }`}
+              >
+                {modelAI.is_latest ? 'Yes' : 'No'}
+              </span>
+            </dd>
+          </div>
+
           <div className="sm:col-span-2">
             <dt className="text-sm font-medium text-gray-700">Parent (ModelAI)</dt>
             <dd className="mt-1 text-sm text-gray-900">
