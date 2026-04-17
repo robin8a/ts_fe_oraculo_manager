@@ -19,6 +19,7 @@ import {
   MicrophoneIcon,
   TableCellsIcon,
   MapIcon,
+  SignalIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../hooks/useAuth';
 
@@ -84,6 +85,15 @@ const navigation: NavItem[] = [
       { name: 'Create', href: '/topologies/create', icon: PlusCircleIcon },
       { name: 'Assign Tree Topology', href: '/topologies/assign-tree-topology', icon: LinkIcon },
       { name: 'Trees Hierarchy', href: '/topologies/trees-hierarchy', icon: FolderIcon },
+    ],
+  },
+  {
+    name: 'Satellite topology',
+    href: '/satellite-topology',
+    icon: SignalIcon,
+    children: [
+      { name: 'List', href: '/satellite-topology', icon: ListBulletIcon },
+      { name: 'Create', href: '/satellite-topology/create', icon: PlusCircleIcon },
     ],
   },
   {

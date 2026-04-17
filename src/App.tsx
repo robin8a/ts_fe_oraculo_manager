@@ -38,6 +38,10 @@ import { ProjectList } from './pages/Project/ProjectList';
 import { ProjectCreate } from './pages/Project/ProjectCreate';
 import { ProjectDetail } from './pages/Project/ProjectDetail';
 import { ProjectEdit } from './pages/Project/ProjectEdit';
+import { SatelliteTopologyList } from './pages/SatelliteTopology/SatelliteTopologyList';
+import { SatelliteTopologyCreate } from './pages/SatelliteTopology/SatelliteTopologyCreate';
+import { SatelliteTopologyDetail } from './pages/SatelliteTopology/SatelliteTopologyDetail';
+import { SatelliteTopologyEdit } from './pages/SatelliteTopology/SatelliteTopologyEdit';
 import { useAuth } from './hooks/useAuth';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -133,6 +137,10 @@ function App() {
                   <Route path="/topologies/trees-hierarchy" element={<TreesHierarchy />} />
                   <Route path="/topologies/:id" element={<TopologyDetail />} />
                   <Route path="/topologies/:id/edit" element={<TopologyEdit />} />
+                  <Route path="/satellite-topology" element={<SatelliteTopologyList />} />
+                  <Route path="/satellite-topology/create" element={<SatelliteTopologyCreate />} />
+                  <Route path="/satellite-topology/:id" element={<SatelliteTopologyDetail />} />
+                  <Route path="/satellite-topology/:id/edit" element={<SatelliteTopologyEdit />} />
                 </Routes>
               </Layout>
             </ProtectedRoute>
