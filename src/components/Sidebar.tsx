@@ -93,6 +93,7 @@ const navigation: NavItem[] = [
     icon: SignalIcon,
     children: [
       { name: 'List', href: '/satellite-topology', icon: ListBulletIcon },
+      { name: 'Hierarchy', href: '/satellite-topology/hierarchy', icon: FolderIcon },
       { name: 'Create', href: '/satellite-topology/create', icon: PlusCircleIcon },
     ],
   },

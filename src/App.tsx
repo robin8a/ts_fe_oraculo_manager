@@ -42,6 +42,7 @@ import { SatelliteTopologyList } from './pages/SatelliteTopology/SatelliteTopolo
 import { SatelliteTopologyCreate } from './pages/SatelliteTopology/SatelliteTopologyCreate';
 import { SatelliteTopologyDetail } from './pages/SatelliteTopology/SatelliteTopologyDetail';
 import { SatelliteTopologyEdit } from './pages/SatelliteTopology/SatelliteTopologyEdit';
+import { SatelliteTopologyHierarchy } from './pages/SatelliteTopology/SatelliteTopologyHierarchy';
 import { useAuth } from './hooks/useAuth';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -138,6 +139,7 @@ function App() {
                   <Route path="/topologies/:id" element={<TopologyDetail />} />
                   <Route path="/topologies/:id/edit" element={<TopologyEdit />} />
                   <Route path="/satellite-topology" element={<SatelliteTopologyList />} />
+                  <Route path="/satellite-topology/hierarchy" element={<SatelliteTopologyHierarchy />} />
                   <Route path="/satellite-topology/create" element={<SatelliteTopologyCreate />} />
                   <Route path="/satellite-topology/:id" element={<SatelliteTopologyDetail />} />
                   <Route path="/satellite-topology/:id/edit" element={<SatelliteTopologyEdit />} />
