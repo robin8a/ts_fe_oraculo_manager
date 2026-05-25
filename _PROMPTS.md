@@ -194,3 +194,9 @@ On tag `vX.Y.Z`:
 ## Satellite Topology
 
 Help to create a new Ux/UI for the new entity "SatelliteTopology" allow me CRUDL
+
+## Model AI Satellite Topology
+
+Help to update the UxUI CRUDL (Create, Read, Update, Delete, List) of "Model AI" component having in count:
+
+- Allow to select and associate SatelliteTopology parent and children

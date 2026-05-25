@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { 
   ArrowLeftIcon, 
@@ -8,6 +8,7 @@ import {
   PlusIcon,
 } from '@heroicons/react/24/outline';
 import { useGetModelAI, useDeleteModelAI } from '../../hooks/useModelAI';
+import { useSatelliteTopologyAssociations } from '../../hooks/useSatelliteTopologyModelAI';
 import { Button } from '../../components/ui/Button';
 import { Modal } from '../../components/ui/Modal';
 
@@ -16,7 +17,17 @@ export const ModelAIDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { modelAI, loading, error } = useGetModelAI(id || '');
   const { deleteModelAI, loading: deleting } = useDeleteModelAI();
+  const {
+    associations: topologyAssociations,
+    selection: topologySelection,
+    load: loadTopologyAssociations,
+    error: topologyError,
+  } = useSatelliteTopologyAssociations();
   const [deleteModal, setDeleteModal] = useState(false);
+
+  useEffect(() => {
+    if (id) loadTopologyAssociations(id);
+  }, [id, loadTopologyAssociations]);
 
   const handleDelete = async () => {
     if (id) {
@@ -119,6 +130,62 @@ export const ModelAIDetail: React.FC = () => {
               >
                 {modelAI.is_latest ? 'Yes' : 'No'}
               </span>
+            </dd>
+          </div>
+
+          <div className="sm:col-span-2">
+            <dt className="text-sm font-medium text-gray-700">Satellite topology (parent)</dt>
+            <dd className="mt-1 text-sm text-gray-900">
+              {topologyError ? (
+                <span className="text-red-600">{topologyError}</span>
+              ) : topologySelection.parentId ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigate(`/satellite-topology/${topologySelection.parentId}`)
+                  }
+                  className="text-primary-600 hover:text-primary-900"
+                >
+                  {topologyAssociations.find(
+                    (a) => a.satelliteTopology?.id === topologySelection.parentId
+                  )?.satelliteTopology?.name ?? topologySelection.parentId}
+                </button>
+              ) : (
+                <span className="text-gray-600">None</span>
+              )}
+            </dd>
+          </div>
+
+          <div className="sm:col-span-2">
+            <dt className="text-sm font-medium text-gray-700">Satellite topology (children)</dt>
+            <dd className="mt-1">
+              {topologySelection.childIds.length > 0 ? (
+                <ul className="list-disc list-inside space-y-1">
+                  {topologySelection.childIds.map((childId) => {
+                    const link = topologyAssociations.find(
+                      (a) => a.satelliteTopology?.id === childId
+                    );
+                    return (
+                      <li key={childId}>
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/satellite-topology/${childId}`)}
+                          className="text-primary-600 hover:text-primary-900 text-left"
+                        >
+                          {link?.satelliteTopology?.name ?? childId}
+                          {link?.satelliteTopology?.type ? (
+                            <span className="text-gray-500 ml-1">
+                              ({link.satelliteTopology.type})
+                            </span>
+                          ) : null}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <span className="text-gray-500">None</span>
+              )}
             </dd>
           </div>
 

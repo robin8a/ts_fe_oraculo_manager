@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { useGetModelAI, useUpdateModelAI, useListModelAIs } from '../../hooks/useModelAI';
+import { useSatelliteTopologyAssociations } from '../../hooks/useSatelliteTopologyModelAI';
+import { SatelliteTopologyAssociationFields } from '../../components/ModelAI/SatelliteTopologyAssociationFields';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Textarea } from '../../components/ui/Textarea';
@@ -13,6 +15,14 @@ export const ModelAIEdit: React.FC = () => {
   const { modelAI, loading: fetching, error: fetchError } = useGetModelAI(id || '');
   const { updateModelAI, loading: updating, error: updateError } = useUpdateModelAI();
   const { modelAIs } = useListModelAIs();
+  const {
+    selection: satelliteTopologySelection,
+    setSelection: setSatelliteTopologySelection,
+    load: loadTopologyAssociations,
+    sync: syncTopologyAssociations,
+    loading: topologyLoading,
+    error: topologyError,
+  } = useSatelliteTopologyAssociations();
 
   const parentOptions = useMemo(() => {
     const opts = [{ value: '', label: 'None (root)' }];
@@ -55,6 +65,10 @@ export const ModelAIEdit: React.FC = () => {
       });
     }
   }, [modelAI]);
+
+  useEffect(() => {
+    if (id) loadTopologyAssociations(id);
+  }, [id, loadTopologyAssociations]);
 
   const validate = () => {
     const errors: Record<string, string> = {};
@@ -99,9 +113,11 @@ export const ModelAIEdit: React.FC = () => {
       modelAIModelAIParentId: formData.modelAIModelAIParentId || undefined,
     });
 
-    if (result) {
-      navigate(`/modelai/${id}`);
-    }
+    if (!result) return;
+
+    const synced = await syncTopologyAssociations(id, satelliteTopologySelection);
+    if (!synced) return;
+    navigate(`/modelai/${id}`);
   };
 
   const handleChange = (field: string, value: string | number | boolean | undefined) => {
@@ -134,7 +150,7 @@ export const ModelAIEdit: React.FC = () => {
     );
   }
 
-  const error = updateError;
+  const error = updateError || topologyError;
 
   return (
     <div>
@@ -280,6 +296,12 @@ export const ModelAIEdit: React.FC = () => {
               min="0"
               required
             />
+
+            <SatelliteTopologyAssociationFields
+              selection={satelliteTopologySelection}
+              onChange={setSatelliteTopologySelection}
+              disabled={updating || topologyLoading}
+            />
           </div>
 
           <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
@@ -290,7 +312,7 @@ export const ModelAIEdit: React.FC = () => {
             >
               Cancel
             </Button>
-            <Button type="submit" variant="primary" isLoading={updating}>
+            <Button type="submit" variant="primary" isLoading={updating || topologyLoading}>
               Update ModelAI
             </Button>
           </div>

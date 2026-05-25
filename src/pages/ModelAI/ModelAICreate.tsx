@@ -2,6 +2,9 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { useCreateModelAI, useListModelAIs } from '../../hooks/useModelAI';
+import { syncSatelliteTopologyModelAIs } from '../../hooks/useSatelliteTopologyModelAI';
+import type { SatelliteTopologyAssociationSelection } from '../../types/satelliteTopologyModelAI';
+import { SatelliteTopologyAssociationFields } from '../../components/ModelAI/SatelliteTopologyAssociationFields';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Textarea } from '../../components/ui/Textarea';
@@ -40,6 +43,9 @@ export const ModelAICreate: React.FC = () => {
     }
   }, [parentIdFromQuery]);
 
+  const [satelliteTopologySelection, setSatelliteTopologySelection] =
+    useState<SatelliteTopologyAssociationSelection>({ parentId: '', childIds: [] });
+  const [associationError, setAssociationError] = useState<string | null>(null);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   const validate = () => {
@@ -78,13 +84,27 @@ export const ModelAICreate: React.FC = () => {
       return;
     }
 
+    setAssociationError(null);
     const result = await createModelAI({
       ...formData,
       group: formData.group.trim() || undefined,
     });
-    if (result) {
-      navigate('/modelai');
+    if (!result) return;
+
+    const hasTopology =
+      satelliteTopologySelection.parentId || satelliteTopologySelection.childIds.length > 0;
+    if (hasTopology) {
+      const syncResult = await syncSatelliteTopologyModelAIs(result.id, satelliteTopologySelection);
+      if (!syncResult.ok) {
+        setAssociationError(
+          syncResult.error ??
+            'Model was created but satellite topology associations could not be saved.'
+        );
+        navigate(`/modelai/${result.id}/edit`);
+        return;
+      }
     }
+    navigate('/modelai');
   };
 
   const handleChange = (field: string, value: string | number | boolean | undefined) => {
@@ -112,9 +132,10 @@ export const ModelAICreate: React.FC = () => {
         <p className="mt-1 text-sm text-gray-500">Add a new AI model to the system</p>
       </div>
 
-      {error && (
+      {(error || associationError) && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-          <p className="text-red-800">Error: {error}</p>
+          {error && <p className="text-red-800">Error: {error}</p>}
+          {associationError && <p className="text-red-800 mt-1">{associationError}</p>}
         </div>
       )}
 
@@ -241,6 +262,12 @@ export const ModelAICreate: React.FC = () => {
               error={formErrors.cost_tokens}
               min="0"
               required
+            />
+
+            <SatelliteTopologyAssociationFields
+              selection={satelliteTopologySelection}
+              onChange={setSatelliteTopologySelection}
+              disabled={loading}
             />
           </div>
 
